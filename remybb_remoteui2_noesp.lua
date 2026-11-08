@@ -17,7 +17,6 @@ end
 
 local running = true
 
--- Neverlose-style flat dark palette
 local C_ACC  = Color3.fromRGB(0, 120, 212)
 local C_TACC = Color3.fromRGB(22, 36, 54)
 local C_WBG  = Color3.fromRGB(11, 11, 14)
@@ -273,7 +272,6 @@ avName.Outline = true
 avName.Visible = false
 _G._avRealName = nil
 
--- Orbiting border comet: a pink ball that circles the window edge with a fading trail.
 do
     local bb = { trail = {} }
     bb.ball = D("Circle", { Filled = true, Radius = 4, Color = C_UL, Transparency = 0, ZIndex = 3, Visible = false })
@@ -1719,7 +1717,6 @@ conn = RunService.RenderStepped:Connect(function()
         end
     end
     local fadeTgt = (menuOpen and _G._genLoaded and not _splashAgain) and 1 or 0
-    -- if _G.__splashUpdate then _G.__splashUpdate(uiPos.X, uiPos.Y, WIN_W, minimized and 44 or WIN_H) end
     if _splashAgain then menuFade = 0 end
     if menuFade ~= fadeTgt then
         menuFade = menuFade + math.clamp(fadeTgt - menuFade, -0.12, 0.12)
@@ -2146,8 +2143,6 @@ task.spawn(function()
         task.wait(1)
     end
 end)
-
--- Extra UI motion helpers (safe, behind-boxes friendly)
 _G.__tabUlX = _G.__tabUlX or nil
 do
     if not _G.__tabUnderline then
@@ -2185,11 +2180,9 @@ _G.__animUpdate = function(x0, y0, w, h, fade)
         avRing.Radius = 13
     end
 end
--- Ambient and edge waves removed by user request
 _G.__particles = nil
 _G.__edgeWaves = nil
 _G.__animExtra = function(x0, y0, w, h, fade) return end
--- Ambient falling particles (30) top-to-bottom drift
 _G.__fallStart = tick()
 do
     local ps = {}
@@ -2523,13 +2516,10 @@ lala.accHead = true
 lala.accSpeedBoostOn = false
 lala.keybindsHud = false
 lala.autoplay = false
-lala.singularityV1AutoTrigger = true
-lala.dualityAutoTrigger = true
-lala.infAutoTrigger = true
+lala.singularityV1AutoTrigger = false
+lala.dualityAutoTrigger = false
+lala.infAutoTrigger = false
 lala.infAutoTriggerDist = 30
--- Track Singularity v1 / Infinity use via the AbilityActive attribute (10 Hz).
--- Each player's equipped ability is cached for 1s, and AbilityActive is only read for
--- players who actually have one of the enabled abilities equipped.
 task.spawn(function()
     local prev = {}
     local abiCache = {}
@@ -3153,8 +3143,6 @@ local function doHumanParry()
 
         if not userRmb then pcall(mouse2press) end
         task.wait(fast and 0.001 or 0.008)
-
-        -- calibrate both axes (once per session, then reuse)
         local sensYaw, sensPitch = _G.__curveSensY, _G.__curveSensP
         if not sensYaw or math.abs(sensYaw) < 1e-5 then
             local a0 = yawOf(cam.CFrame)
@@ -3173,7 +3161,6 @@ local function doHumanParry()
             _G.__curveSensP = sensPitch
         end
 
-        -- one atomic turn: whole delta in a single input, no convergence loop
         local startYaw = yawOf(cam.CFrame)
         local startPitch = pitchOf(cam.CFrame)
         local turnYaw = wrap(startYaw + yawDelta)
@@ -3183,10 +3170,7 @@ local function doHumanParry()
         mousemoverel(px, py)
         task.wait(fast and 0.001 or 0.008)
 
-        -- parry from the turned view
         _G.finishParry()
-
-        -- restore view + cursor to exact position
         task.wait(fast and 0.005 or 0.03)
         mousemoverel(-px, -py)
         task.wait(0.01)
@@ -3342,8 +3326,6 @@ task.spawn(function()
                 -- simple immediate turn then parry
                 mousemoverel(lala.curveDir == "Right" and 1266 or -1266, 0)
                 task.wait(0.02)
-
-                -- parry right now
                 st.parried = true
                 local r = pressParry()
                 if r then pcall(r) end
@@ -3687,7 +3669,6 @@ scan = function(dt)
             end
             if dualFound then _G.__apDualUntil = now + 1.2 end
             _G.__apDualityOn = dualFound or ((_G.__apDualUntil or 0) > now)
-            -- Duality auto triggerbot: turn it on while Slashes of Duality is selected.
             if _G.__apDualityOn and lala.dualityAutoTrigger ~= false and not lala.triggerbot then
                 lala.triggerbot = true
                 _G.__dualAutoEnabled = true
@@ -3768,7 +3749,6 @@ scan = function(dt)
                 end
                 clashNoBallT = now
                 local isMine = (tgt == me or tgt == meId)
-                -- Martyrdom/re-target: let retained balls be parried again.
                 if ballParriedOnce[a2] and now - ballParriedOnce[a2] > 0.95 then
                     ballParriedOnce[a2] = nil
                 end
@@ -3786,8 +3766,6 @@ scan = function(dt)
                     if isInfBall and (infBallDist == nil or dist < infBallDist) then
                         infBallDist = dist
                     end
-                    -- Infinity auto triggerbot: arm when the ability was recently used and
-                    -- my Infinity ball is inside the configured trigger distance.
                     if lala.infAutoTrigger == true and isInfBall and infBallDist and infBallDist <= (tonumber(lala.infAutoTriggerDist) or 30) then
                         local recentInf = false
                         for _, ts in pairs((_G.__infAutoTarget or {})) do
@@ -3818,7 +3796,6 @@ scan = function(dt)
                     local tgtStr = tostring(tgt or "")
                     realClos = closing
                     realTgt = tgtStr
-                    -- Auto-enable triggerbot when a Singularity v1 user launches the ball at someone.
                     if lala.singularityV1AutoTrigger and not lala.triggerbot then
                         local marks = _G.__singAutoTarget or {}
                         local recent = marks[tgtStr]
@@ -4089,7 +4066,6 @@ scan = function(dt)
             ymer.parryDist = nil
             local smartLead = lead * (0.45 + (smartAcc / 100) * 0.65)
             if tapBest.dist > smartLead then
-                -- outside smart window
             else
                 local curvingSmart = (tapBest.closing or 0) <= getEffectiveFacingMin()
                 local isMyAbility = abilityActive
@@ -4173,7 +4149,6 @@ scan = function(dt)
             ymer.bAddr = nil
         end
     end
-    -- turn the auto-on Sing v1 triggerbot back off when the ball slows down intensely
     if _G.__singV1AutoEnabled and lala.triggerbot and lala.singularityV1AutoTrigger then
         local tgtSpeed = tapBest and tapBest.speed or 0
         if tgtSpeed >= 65 and tgtSpeed < (_G.__singV1LastSpeed or tgtSpeed) * 0.4 then
@@ -4183,7 +4158,6 @@ scan = function(dt)
         end
         _G.__singV1LastSpeed = tgtSpeed
     end
-    -- turn the auto-on Duality triggerbot back off once Duality has been gone a while
     if _G.__dualAutoEnabled and lala.triggerbot and lala.dualityAutoTrigger then
         local alive = _G.__apDualityOn or false
         local lastD = _G.__dualAutoLastSeen or now
@@ -4791,13 +4765,10 @@ _G.__phY = {}
 _G.__phZ = {}
 (function()
     local function inHand(x,y)
-        -- broader, thicker palm
         if math.abs(x) <= 1.65 and y >= -1.75 and y <= 0.75 then return true end
         local fingers = {{-1.35,0.75,2.45},{-0.55,0.75,2.75},{0.2,0.75,3.0},{1.0,0.75,2.65}}
         for _,f in ipairs(fingers) do if math.abs(x - f[1]) <= 0.42 and y >= f[2] and y <= f[3] then return true end end
-        -- prominent, thicker thumb
         if math.abs((x - 1.95) - 0.38*y) <= 0.45 and y >= -1.5 and y <= 2.15 then return true end
-        -- wrist bottom
         if math.abs(x) <= 0.85 and y >= -1.9 and y <= -1.4 then return true end
         return false
     end
@@ -4868,7 +4839,6 @@ _G.__pwDraw = function(c, R, ballPos, flashing)
             local si = (i - 1) % cols; local ri = math.floor((i - 1) / cols)
             local sx = (si - (cols - 1) * 0.5) * (wx / (cols - 1))
             local sy = (ri - (rows - 1) * 0.5) * (wy / (rows - 1))
-            -- delayed target for bottom-up assembly
             local birth = _G.__pwWallBirth or now
             local gate = math.clamp((now - birth - (ri / rows) * 0.18) / 0.04, 0, 1)
             local ty = wallCenter.Y + sy * gate + (wallCenter.Y - 8) * (1 - gate)
@@ -4946,7 +4916,6 @@ _G.__ribDraw = function(c, R, ballPos, flashing)
             li = li + 1
             if li <= 70 then targetA[li]=p0; targetB[li]=p1 end
         end
-        -- repeat grid slots across all ribbon lines so transitions are 1-to-1
         for xi = 1, 65 do
             local gi = (xi - 1) % li + 1
             if targetA[gi] then targetA[xi] = targetA[xi] or targetA[gi]; targetB[xi] = targetB[xi] or targetB[gi] end
@@ -7417,8 +7386,6 @@ do
     T(curveSec, "Pre-Turn (fast parry)", "curvePreTurn")
     local simpleCurveOpts = { "Left", "Right", "Up", "Back" }
     local advCurveOpts = { "Back Up", "Back Down", "Back Left", "Back Right", "Left Up", "Left Down", "Right Up", "Right Down" }
-    -- if the saved direction is advanced, the standard dropdown cannot display
-    -- it, so it should never "overwrite" the active advanced selection
 
     local curveMainEl = curveSec.element("Dropdown", "Standard Direction", {
         options = simpleCurveOpts,
@@ -7429,8 +7396,6 @@ do
             return simpleCurveOpts[1]
         end)() },
     }, function(v)
-        -- only update if the chosen value actually belongs to this list;
-        -- advanced directions are ignored here so they cannot be clobbered
         local basic = false
         for _, o in ipairs(simpleCurveOpts) do if v.Dropdown == o then basic = true end end
         if not basic then return end
@@ -7449,8 +7414,6 @@ do
             return advCurveOpts[1]
         end)() },
     }, function(v)
-        -- advanced only changes the active direction if it is a real advanced
-        -- value, so the standard entry is never silently overwritten
         local adv = false
         for _, o in ipairs(advCurveOpts) do if v.Dropdown == o then adv = true end end
         if not adv then return end
