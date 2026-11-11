@@ -79,12 +79,14 @@ PRESETS = AP_PRESETS
 
 local allD = {}
 local baseTs = {}
+local isTextD = {}
 local function D(type, props)
     local d = Drawing.new(type)
     d.Visible = false
     if props then for k, v in pairs(props) do d[k] = v end end
     allD[#allD + 1] = d
     baseTs[#allD] = (props and props.Transparency) or 1
+    isTextD[#allD] = type == "Text"
     return d
 end
 local function T(size, col)
@@ -100,6 +102,7 @@ local function fakeOutline(z, thickness)
     }
     local t = thickness or 1
     local px, py, pw, ph = 0, 0, 0, 0
+    local visible, color = false, nil
     local function upd()
         parts[1].Position = Vector2.new(px, py)
         parts[1].Size = Vector2.new(pw, t)
@@ -112,13 +115,25 @@ local function fakeOutline(z, thickness)
     end
     return setmetatable({}, {
         __newindex = function(self, k, v)
-            if k == "Position" then px, py = v.X, v.Y
-            elseif k == "Size" then pw, ph = v.X, v.Y
-            elseif k == "Visible" then for _, p in ipairs(parts) do p.Visible = v end
-            elseif k == "Color" then for _, p in ipairs(parts) do p.Color = v end
-            elseif k == "Thickness" then t = v
+            local dirty = false
+            if k == "Position" then
+                if px ~= v.X or py ~= v.Y then px, py = v.X, v.Y; dirty = true end
+            elseif k == "Size" then
+                if pw ~= v.X or ph ~= v.Y then pw, ph = v.X, v.Y; dirty = true end
+            elseif k == "Visible" then
+                if visible ~= v then
+                    visible = v
+                    for _, p in ipairs(parts) do p.Visible = v end
+                end
+            elseif k == "Color" then
+                if color ~= v then
+                    color = v
+                    for _, p in ipairs(parts) do p.Color = v end
+                end
+            elseif k == "Thickness" then
+                if t ~= v then t = v; dirty = true end
             else rawset(self, k, v) end
-            if k == "Position" or k == "Size" or k == "Thickness" then upd() end
+            if dirty then upd() end
         end,
         __index = function(self, k)
             if k == "_parts" then return parts end
@@ -209,6 +224,8 @@ local hovTab, hovSec = nil, nil
 local hovSector = nil
 local hovRow = nil
 local gShow = true
+_G.__genUiPrefs = _G.__genUiPrefs or { particles = true, ball = true }
+local uiPrefs = _G.__genUiPrefs
 
 local function inRect(mx, my, x, y, w, h)
     return mx >= x and mx <= x + w and my >= y and my <= y + h
@@ -276,7 +293,7 @@ do
     local bb = { trail = {} }
     bb.ball = D("Circle", { Filled = true, Radius = 4, Color = C_UL, Transparency = 0, ZIndex = 3, Visible = false })
     bb.glow = D("Circle", { Filled = true, Radius = 10, Color = C_ACC, Transparency = 0.8, ZIndex = 2, Visible = false })
-    for i = 1, 16 do
+    for i = 1, 8 do
         bb.trail[i] = D("Circle", { Filled = true, Radius = 2.6, Color = C_ACC, Transparency = 0.4, ZIndex = 2, Visible = false })
     end
     _G.__bb = bb
@@ -319,12 +336,16 @@ _G.__bbUpdate = function(x, y, w, h, fade, mX, mY)
     if not bb then return end
     local a = math.clamp(fade or 0, 0, 1)
     if a <= 0.01 then
-        bb.ball.Visible = false
-        bb.glow.Visible = false
-        for i = 1, #bb.trail do bb.trail[i].Visible = false end
+        if not bb.hidden then
+            bb.ball.Visible = false
+            bb.glow.Visible = false
+            for i = 1, #bb.trail do bb.trail[i].Visible = false end
+            bb.hidden = true
+        end
         _G.__bbLast = nil
         return
     end
+    bb.hidden = false
     bb.ball.Color = C_UL
     bb.glow.Color = C_ACC
     local now = tick()
@@ -356,7 +377,7 @@ _G.__bbUpdate = function(x, y, w, h, fade, mX, mY)
         _G.__bbBallPos = { x = cx, y = cy }
         local h = _G.__bbBallHist
         table.insert(h, 1, { x = cx, y = cy })
-        if #h > 18 then table.remove(h, #h) end
+        if #h > 10 then table.remove(h, #h) end
         _G.__bbBallHist = h
         local pulse = 0.5 + 0.5 * math.sin(now * 2.6)
         for i = 1, #bb.trail do
@@ -1040,7 +1061,7 @@ function library:set_alpha(a)
         local bt = baseTs[i]
         if type(bt) ~= "number" then bt = 0 end
         local mf = menuFade
-        if mf < 1 and allD[i].ClassName == "Text" then mf = mf ^ 0.55 end
+        if mf < 1 and isTextD[i] then mf = mf ^ 0.55 end
         pcall(function() allD[i].Transparency = bt * uiAlpha * mf end)
     end
 end
@@ -1049,7 +1070,7 @@ local function applyMenuFade()
         local bt = baseTs[i]
         if type(bt) ~= "number" then bt = 0 end
         local mf = menuFade
-        if mf < 1 and allD[i].ClassName == "Text" then mf = mf ^ 0.55 end
+        if mf < 1 and isTextD[i] then mf = mf ^ 0.55 end
         pcall(function() allD[i].Transparency = bt * uiAlpha * mf end)
     end
 end
@@ -1111,10 +1132,13 @@ end
 
 function library.new(title, cfgDir)
     if cfgDir then CFG_DIR = cfgDir:gsub("[\\/]+$", "") end
-    local cam = pcall(function() return workspace.CurrentCamera end)
-    local vs = pcall(function() return workspace.CurrentCamera.ViewportSize end)
-    local cx = type(vs) == "table" and vs.X or 1600
-    local cy = type(vs) == "table" and vs.Y or 900
+    local vs
+    pcall(function()
+        local camera = workspace.CurrentCamera
+        vs = camera and camera.ViewportSize
+    end)
+    local cx = vs and vs.X or 1600
+    local cy = vs and vs.Y or 900
     uiPos = Vector2.new(math.floor(cx / 2 - WIN_W / 2), math.max(0, math.floor(cy / 2 - WIN_H / 2)))
 
     local menu = {}
@@ -1683,19 +1707,24 @@ local function handleRightClick(mx, my)
 end
 
 local conn
+local menuMouse
+pcall(function()
+    if lp then menuMouse = lp:GetMouse() end
+end)
 conn = RunService.RenderStepped:Connect(function()
     if not running or GEN ~= _G_._genGEN then
         conn:Disconnect()
         return
     end
 
-    local m = nil
-    if lp then pcall(function() m = lp:GetMouse() end) end
+    local m = menuMouse
+    if not m and lp then
+        pcall(function() menuMouse = lp:GetMouse() end)
+        m = menuMouse
+    end
 
     local mx, my = 0, 0
     if m then mx, my = m.X, m.Y end
-    if _G.__fallUpdate then _G.__fallUpdate(uiPos.X, uiPos.Y, WIN_W, minimized and 44 or WIN_H, 1) end
-
     local _splashAgain = (_G.__splashActive == true) or (_G.__splashWaiting == true) or (_G.__splashEnd ~= nil and tick() < _G.__splashEnd + 0.6)
     if menuFade <= 0.01 then
         for _, tb in ipairs(tabHandles or {}) do
@@ -1716,10 +1745,12 @@ conn = RunService.RenderStepped:Connect(function()
         uiSettle = 3
     end
 
-    _G.__bbUpdate(uiPos.X, uiPos.Y, WIN_W, minimized and 44 or WIN_H, menuFade, mx, my)
+    local ballFade = uiPrefs.ball and menuFade or 0
+    local particleFade = uiPrefs.particles and menuFade or 0
+    _G.__bbUpdate(uiPos.X, uiPos.Y, WIN_W, minimized and 44 or WIN_H, ballFade, mx, my)
     _G.__animUpdate(uiPos.X, uiPos.Y, WIN_W, minimized and 44 or WIN_H, menuFade)
 
-    _G.__fallUpdate(uiPos.X, uiPos.Y, WIN_W, minimized and 44 or WIN_H, menuFade)
+    _G.__fallUpdate(uiPos.X, uiPos.Y, WIN_W, minimized and 44 or WIN_H, particleFade)
 
     if (menuOpen and _G._genLoaded and not _splashAgain) or menuFade > 0.001 then
         gShow = true
@@ -2178,7 +2209,7 @@ _G.__animExtra = function(x0, y0, w, h, fade) return end
 _G.__fallStart = tick()
 do
     local ps = {}
-    for i = 1, 60 do
+    for i = 1, 24 do
         ps[i] = {
             d = D("Square", { Filled = true, Color = C_ACC, Transparency = 0.6, Size = Vector2.new(1.8, 1.8), ZIndex = 3, Visible = false }),
             rx = math.random() * 1000,
@@ -2194,10 +2225,14 @@ end
 _G.__fallUpdate = function(x0, y0, w, h, fade)
     local a = math.clamp(fade or 0, 0, 1)
     if a <= 0.01 then
-        for _, p in ipairs(_G.__fallParticles or {}) do if p.d then p.d.Visible = false end end
+        if _G.__fallShown then
+            for _, p in ipairs(_G.__fallParticles or {}) do if p.d then p.d.Visible = false end end
+            _G.__fallShown = false
+        end
         _G.__fallLast = nil
         return
     end
+    _G.__fallShown = true
     local now = tick()
     local last = _G.__fallLast
     local dt = last and math.min(now - last, 0.1) or 0.016
@@ -7595,6 +7630,10 @@ local function loadUI()
     end)
 end
 loadUI()
+if lala.uiParticles == nil then lala.uiParticles = true end
+if lala.uiBall == nil then lala.uiBall = true end
+_G.__genUiPrefs.particles = lala.uiParticles
+_G.__genUiPrefs.ball = lala.uiBall
 
 local menu = library.new("gennegen", "nemv2")
 
@@ -7608,8 +7647,12 @@ local function T(sector, label, field, keyField)
         default = { Toggle = boo(lala[field], false) },
     }, function(v)
         lala[field] = v.Toggle
+        if field == "uiParticles" then _G.__genUiPrefs.particles = v.Toggle end
+        if field == "uiBall" then _G.__genUiPrefs.ball = v.Toggle end
         saveUI()
     end)
+    if field == "uiParticles" then _G.__genUiPrefs.particles = el.value.Toggle end
+    if field == "uiBall" then _G.__genUiPrefs.ball = el.value.Toggle end
     if keyField then
         local kb = el:add_keybind()
         kb.toggleElement = false
@@ -8028,6 +8071,8 @@ do
             saveUI()
         end)
     end
+    T(uiset, "Background Particles", "uiParticles")
+    T(uiset, "Cursor Ball Effect", "uiBall")
     T(uiset, "Keybinds List", "keybindsHud")
     do
         local rd = accEl.draw
