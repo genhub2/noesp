@@ -7736,12 +7736,12 @@ do
     T(trigSec, "Sing V1 Auto Triggerbot", "singularityV1AutoTrigger")
     T(trigSec, "Duality Auto Triggerbot", "dualityAutoTrigger")
     T(trigSec, "Infinity Auto Triggerbot", "infAutoTrigger")
-    S(trigSec, "Infinity Trigger Dist", "infAutoTriggerDist", 1, 60, 1, 30)
+    S(trigSec, "Infinity In Radius", "infAutoTriggerDist", 1, 60, 1, 30)
 
     local curveSec = autoParry.new_sector("Auto Curve", "Right")
     curveSec._desc = "Curve direction and power"
     T(curveSec, "Auto Curve On Hit", "curveOnHit", "keyY")
-    T(curveSec, "Pre-Turn (fast parry)", "curvePreTurn")
+    T(curveSec, "Pre-turn", "curvePreTurn")
     local simpleCurveOpts = { "Left", "Right", "Up", "Back" }
     local advCurveOpts = { "Back Up", "Back Down", "Back Left", "Back Right", "Left Up", "Left Down", "Right Up", "Right Down" }
 
@@ -7764,7 +7764,7 @@ do
         end
         saveUI()
     end)
-    local curveAdvDirEl = curveSec.element("Dropdown", "Advanced Angles", {
+    local curveAdvDirEl = curveSec.element("Dropdown", "Advanced Directions", {
         options = advCurveOpts,
         default = { Dropdown = (function()
             for _, o in ipairs(advCurveOpts) do
@@ -7806,7 +7806,7 @@ do
 
     local trainSec = autoParry.new_sector("Training")
     trainSec._desc = "Training ball settings"
-    T(trainSec, "Training Ball", "trainingBall")
+    T(trainSec, "Training Ball Autoparry", "trainingBall")
 
     local secondary = main.new_section("Secondary")
     local lead = secondary.new_sector("Lead")
@@ -7886,9 +7886,9 @@ do
     T(acc, "Show Above Head", "accHead")
     S(acc, "Randomize Min", "randMin", 1, 99, 1, 20)
     S(acc, "Randomize Max", "randMax", 2, 100, 1, 100)
-    T(acc, "Speed Boost (fast)", "accSpeedBoostOn")
-    S(acc, "Boost at Speed", "accSpeedThresh", 20, 150, 1, 70)
-    S(acc, "Speed Boost %", "accSpeedBoost", 0, 100, 1, 25)
+    T(acc, "Boost accuracy", "accSpeedBoostOn")
+    S(acc, "Boost if Ball Speed is Above", "accSpeedThresh", 20, 150, 1, 70)
+    S(acc, "Boost Accuracy by (%)", "accSpeedBoost", 0, 100, 1, 25)
 
     local pset = main.new_section("Parry Settings")
     local psec = pset.new_sector("Distances")
@@ -8033,7 +8033,7 @@ do
     T(esp, "ESP Master", "espMaster", "keyEspMaster")
     T(esp, "Ability ESP", "abilityEsp")
     T(esp, "Ability Upgrade ESP", "abilityUpgradeEsp")
-    T(esp, "Ability Timer ESP", "abilityTimerEsp")
+    T(esp, "Ability Cooldown ESP", "abilityTimerEsp")
 end
 
 do
