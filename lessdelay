@@ -8123,7 +8123,7 @@ do
         local t0 = tick()
         local dur = 2.6
         while true do
-            local p =f math.min(1, (tick() - t0) / dur)
+            local p = math.min(1, (tick() - t0) / dur)
             local e = p < 0.5 and 2 * p * p or 1 - ((-2 * p + 2) ^ 2) / 2
             fil.Size = Vector2.new(math.max(1, math.floor(220 * e)), 6)
             st.Text = p < 0.3 and "loading modules..." or (p < 0.55 and "decoding assets..." or (p < 0.85 and "building interface..." or "done"))
