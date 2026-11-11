@@ -3227,12 +3227,19 @@ do
             if lala.triggerbot then
                 pcall(function()
                     local balls = workspace:FindFirstChild("Balls")
-                    if not balls then fired = false return end
+                    local triggerKids = balls and balls:GetChildren() or {}
+                    if lala.trainingBall then
+                        local tb = workspace:FindFirstChild("TrainingBalls") or workspace:FindFirstChild("TrainingBall") or workspace:FindFirstChild("Training")
+                        if tb then
+                            for _, v in ipairs(tb:GetChildren()) do triggerKids[#triggerKids + 1] = v end
+                        end
+                    end
+                    if #triggerKids == 0 then fired = false return end
                     local ch2 = lp.Character
                     if ch2 and ch2:FindFirstChild("SingularityCape") then fired = false return end
                     local myInf = false
                     pcall(function()
-                        for _, b in ipairs(balls:GetChildren()) do
+                        for _, b in ipairs(triggerKids) do
                             if (b:FindFirstChild("InfinityFX") or b:FindFirstChild("TrueInfinityFX")) and remy.recentlyTapped[b.Address or b.Name] and tick() - remy.recentlyTapped[b.Address or b.Name] < 2 then
                                 myInf = true
                                 break
@@ -3241,12 +3248,29 @@ do
                     end)
                     if myInf then fired = false return end
                     local me = lp.Name
+                    local meId = tostring(lp.UserId)
+                    local root = ch2 and ch2:FindFirstChild("HumanoidRootPart")
                     local targeting = false
-                    for _, b in ipairs(balls:GetChildren()) do
+                    for _, b in ipairs(triggerKids) do
                         local tgt = b:GetAttribute("target")
-                        if tgt and tostring(tgt) == me then
+                        if tgt and (tostring(tgt) == me or tostring(tgt) == meId) then
                             targeting = true
                             break
+                        end
+                        if lala.trainingBall and (not tgt or tostring(tgt) == "") and root then
+                            local okIncoming, incoming = pcall(function()
+                                local delta = root.Position - b.Position
+                                local velocity = b.AssemblyLinearVelocity or b.Velocity
+                                local speed = velocity.Magnitude
+                                local closing = speed > 0.1 and velocity.Unit:Dot(delta.Unit) or 0
+                                local dist = delta.Magnitude
+                                local panicDist = (tonumber(lala.panicBase) or 28) + speed * (tonumber(lala.panicSpeedMul) or 0.08)
+                                return closing > 0.15 and ((dist <= (tonumber(lala.closeRangeDist) or 14)) or (speed > 60 and dist < panicDist))
+                            end)
+                            if okIncoming and incoming then
+                                targeting = true
+                                break
+                            end
                         end
                     end
                     if targeting and not fired then
@@ -3569,9 +3593,15 @@ scan = function(dt)
     local me = char and char.Name or ""
     local balls = workspace:FindFirstChild("Balls")
     local ballKids = balls and balls:GetChildren() or {}
+    local trainingBallSet = {}
     if lala.trainingBall then
         local tb = workspace:FindFirstChild("TrainingBalls") or workspace:FindFirstChild("TrainingBall") or workspace:FindFirstChild("Training")
-        if tb then for _, v in ipairs(tb:GetChildren()) do ballKids[#ballKids+1]=v end end
+        if tb then
+            for _, v in ipairs(tb:GetChildren()) do
+                ballKids[#ballKids + 1] = v
+                trainingBallSet[v] = true
+            end
+        end
     end
     local now = tick()
     local leadTime = getEffectiveLeadTime()
@@ -3782,7 +3812,9 @@ scan = function(dt)
                     vi = #vis
                 end
                 clashNoBallT = now
-                local isMine = (tgt == me or tgt == meId)
+                local isTrainingBall = trainingBallSet[b] == true
+                local untargetedTrainingIncoming = isTrainingBall and (not tgt or tostring(tgt) == "") and dir ~= nil and speed > 1 and closing > 0.15
+                local isMine = (tgt == me or tgt == meId) or untargetedTrainingIncoming
                 if ballParriedOnce[a2] and now - ballParriedOnce[a2] > 0.95 then
                     ballParriedOnce[a2] = nil
                 end
