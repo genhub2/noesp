@@ -4340,7 +4340,7 @@ _G.__vm = function()
 end
 _G.__rimOn = function()
     local m = _G.__vm()
-    return m ~= "Off" and m ~= "Cone" and m ~= "Lane" and m ~= "Shield" and m ~= "Trajectory Tunnel" and m ~= "Particle Wall" and m ~= "Energy Ribbon" and m ~= "Wings" and m ~= "Duo Strike"
+    return m ~= "Off" and m ~= "Cone" and m ~= "Lane" and m ~= "Shield" and m ~= "Trajectory Tunnel" and m ~= "Nano Wall" and m ~= "Grid Wall" and m ~= "Wings" and m ~= "Guardians"
 end
 _G.__isFilled = function()
     local m = _G.__vm()
@@ -6008,13 +6008,13 @@ _G.__drawExtraView = function(mode, ptsIn, vflIn, c, R, ballPos, flashing)
         _G.__shieldDraw(c, R, ymer.threatPos, flashing)
     elseif mode == "Tether" then
         _G.__tetherDraw(c, R, ballPos, flashing)
-    elseif mode == "Particle Wall" then
+    elseif mode == "Nano Wall" then
         _G.__pwDraw(c, R, ymer.threatPos, flashing)
-    elseif mode == "Energy Ribbon" then
+    elseif mode == "Grid Wall" then
         _G.__ribDraw(c, R, ymer.threatPos, flashing)
     elseif mode == "Wings" then
         _G.__wingsDraw(c, R, ymer.threatPos, flashing)
-    elseif mode == "Duo Strike" then
+    elseif mode == "Guardians" then
         _G.__duoDraw(c, R, ymer.threatPos, flashing)
     elseif mode == "Trajectory Tunnel" then
         if ballPos and c and (R or 0) > 0 then
@@ -6694,10 +6694,10 @@ conn = RunService.RenderStepped:Connect(function()
             if rt then sc = Vector3.new(rt.Position.X, rt.Position.Y - 2.5, rt.Position.Z) end
         end
         if _G.__vm() == "Shield" and not ymer.abilityActive and sc then _G.__shieldDraw(sc, math.max(ringR, 12), nil, false) end
-        if _G.__vm() == "Particle Wall" and sc then _G.__pwDraw(sc, math.max(ringR, 14), nil, false) end
-        if _G.__vm() == "Energy Ribbon" and sc then _G.__ribDraw(sc, math.max(ringR, 14), nil, false) end
+        if _G.__vm() == "Nano Wall" and sc then _G.__pwDraw(sc, math.max(ringR, 14), nil, false) end
+        if _G.__vm() == "Grid Wall" and sc then _G.__ribDraw(sc, math.max(ringR, 14), nil, false) end
         if _G.__vm() == "Wings" and sc then _G.__wingsDraw(sc, math.max(ringR, 14), nil, false) end
-        if _G.__vm() == "Duo Strike" and sc then _G.__duoDraw(sc, math.max(ringR, 14), nil, false) end
+        if _G.__vm() == "Guardians" and sc then _G.__duoDraw(sc, math.max(ringR, 14), nil, false) end
         coneTri.Visible = false
         hitDot.Visible = false
         for i = 1, POOL do
@@ -7845,7 +7845,7 @@ do
     end
     local defaultOpts = { "Off", "Circle", "Disc", "Dome", "Grid Dome", "Sphere", "Double Ring", "Tether", "Cylinder" }
     local advancedOpts = { "Off", "Cone", "Trajectory Tunnel", "Lane", "Shield" }
-    local animatedOpts = { "Off", "Particle Wall", "Energy Ribbon", "Wings", "Duo Strike" }
+    local animatedOpts = { "Off", "Nano Wall", "Grid Wall", "Wings", "Guardians" }
     local function isOpts(opts, v) return vf(opts, v) end
     local viewDDdef, viewDDadv, viewDDanim
     viewDDdef = apv.element("Dropdown", "View (Default)", { options = defaultOpts, default = { Dropdown = isOpts(defaultOpts, viewSel) and viewSel or "Off" } }, function(v)
