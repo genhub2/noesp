@@ -6,6 +6,7 @@ local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local lp = Players.LocalPlayer
 local HttpService = game:GetService("HttpService")
+local uis = game:GetService("UserInputService")
 
 local _G_ = _G
 local GEN = (_G_._genGEN or 0) + 1
@@ -29,6 +30,12 @@ _G._allSectors = {}
 _G.__uiScroll = nil
 _G.__uiScrollBar = nil
 _G.__uiScrollDrag = nil
+_G.__remyLegacyCfgDirty = true
+_G.__remyNamedCfgDirty = true
+_G.__remyUiScrollSave = {}
+local scrollSave = _G.__remyUiScrollSave
+_G.__remyUiCollapseSave = {}
+local collapseSave = _G.__remyUiCollapseSave
 _G._bgIsLight = false
 _G._bgIsRed = false
 _G._bgIsBlack = true
@@ -79,18 +86,504 @@ PRESETS = AP_PRESETS
 
 local allD = {}
 local baseTs = {}
+local baseSz = {}
 local isTextD = {}
 local function D(type, props)
     local d = Drawing.new(type)
     d.Visible = false
     if props then for k, v in pairs(props) do d[k] = v end end
     allD[#allD + 1] = d
-    baseTs[#allD] = (props and props.Transparency) or 1
-    isTextD[#allD] = type == "Text"
+    local di = #allD
+    baseTs[di] = (props and props.Transparency) or 1
+    isTextD[di] = type == "Text"
+    baseSz[di] = (type == "Text" and props and tonumber(props.Size)) or nil
+    if baseSz[di] and _G.__uiScale and _G.__uiScale ~= 1 then d.Size = math.max(6, math.floor(baseSz[di] * _G.__uiScale + 0.5)) end
     return d
+end
+
+local bgIdx = {}
+local function DBG(t, p)
+    local d = D(t, p)
+    bgIdx[#allD] = true
+    return d
+end
+local function setDTransparency(d, v)
+    d.Transparency = v
 end
 local function T(size, col)
     return D("Text", { Size = size, Font = 11, Color = col, ZIndex = 9, Visible = false, Outline = true })
+end
+
+_G.__remyTip = {}
+do
+local TIP = _G.__remyTip
+local TIP_DESC = {
+    ["autoparry"] = "Automatically parries the ball when it enters parry range of your character.",
+    ["smart parry"] = "Will parry at the very last moment - Made for you to parry and incase you don't it will but it isn't 100% and intended to be legit.",
+    ["clash"] = "Fast clash parrying for ball-versus-ball collisions.",
+    ["ability parry"] = "Uses your ability to parry whenever it is ready.",
+    ["panic parry"] = "Emergency last-second parry when the ball is extremely close.",
+    ["triggerbot"] = "Parries instantly when you are targeted.",
+    ["autoplay"] = "Automatically moves and reacts so you stay in the match.",
+    ["ability esp"] = "Shows what ability others are using",
+    ["ability cooldown esp"] = "Shows current cooldown of others ability when used",
+    ["ability upgrade esp"] = "Shows what upgrade the others ability are",
+    ["esp master"] = "Master switch that controls every ESP visual at once.",
+    ["ball visuals"] = "Enables custom visual effects for the ball.",
+    ["ap thickness"] = "Sets how thick the autoparry visual is drawn.",
+    ["ap transparency"] = "Sets how see-through the autoparry visual is.",
+    ["indicator thickness"] = "Sets how thick the parry distance indicator is drawn.",
+    ["indicator transparency"] = "Sets how see-through the parry distance indicator is.",
+    ["circle thickness"] = "Sets how thick the circle outline is drawn.",
+    ["circle transparency"] = "Sets how see-through the circle outline is.",
+    ["parry distance indicator"] = "Draws a marker showing how far away you can parry the ball.",
+    ["mini radar"] = "Shows a small radar of nearby balls and players.",
+    ["target line"] = "Draws a line from you to your current parry target.",
+    ["keybinds list"] = "Lists every key currently bound to a feature.",
+    ["keybind"] = "ESC = NONE",
+    ["stats"] = "Shows live parry statistics and reaction times for this session.",
+    ["ui scale"] = "Resizes the whole interface. Drag and release the slider to apply.",
+    ["ui transparency"] = "Changes the transparency of the main window backdrop.",
+    ["ui toggle key"] = "The key that shows or hides this menu.",
+    ["background color"] = "Sets the color of the menu background.",
+    ["theme color"] = "Sets the accent color used throughout the interface.",
+    ["config name"] = "Type a name here to save a new config under that name.",
+    ["search configs"] = "Filters the saved config list by the text you type.",
+    ["saved configs"] = "The list of configs saved on this executor.",
+    ["save config"] = "Saves your current settings as a new named config.",
+    ["overwrite config"] = "Replaces the selected config with your current settings.",
+    ["delete config"] = "Deletes the selected config from this executor.",
+    ["rename config"] = "Renames the selected config to the name you typed.",
+    ["load config"] = "Loads the settings stored in the selected config.",
+    ["reset all settings"] = "Restores every feature and keybind back to its default.",
+    ["reset stats"] = "Clears parry statistics and history but keeps this session timer.",
+    ["unload script"] = "Removes the script and all of its drawings from the game.",
+    ["view"] = "Chooses the parry visual style.",
+    ["view (default)"] = "Chooses a standard parry visual style.",
+    ["view (advanced)"] = "Chooses an advanced parry visual style.",
+    ["view (animated)"] = "Chooses an animated parry visual style.",
+    ["ap color"] = "Sets the color of the autoparry visual.",
+    ["indicator color"] = "Sets the color of the parry distance indicator.",
+    ["trail start"] = "Sets the starting color of the ball trail.",
+    ["trail end"] = "Sets the ending color of the ball trail.",
+    ["auto aim"] = "Moves your cursor around so the ball gets parried to other people.",
+    ["auto curve on hit"] = "Automatically applies curve when you land a parry.",
+    ["auto jump"] = "Jumps realistically for you.",
+    ["auto walk"] = "Walks around the arena for you.",
+    ["background particles"] = "Shows animated particles behind the menu.",
+    ["ball curve"] = "Adds a visual curve to the ball's flight path.",
+    ["boost accuracy"] = "Increases the accuracy of your automatic parries.",
+    ["boost accuracy by (%)"] = "How much accuracy the boost adds, in percent.",
+    ["boost if ball speed is above"] = "Only applies the boost when the ball is faster than this.",
+    ["cursor ball effect"] = "Draws an effect around the ball near your cursor.",
+    ["curve strength"] = "How strongly the ball curve effect is drawn.",
+    ["custom anti-curve value"] = "Reads how curved the ball is while going to you. Closer to 0 = ball needs to be more straight to parry. -1 = ball can be extremely curved and it will still auto parry.",
+    ["custom lead value"] = "Decides how far or close the ball needs to be for you to parry.",
+    ["distance label"] = "Shows the ball distance as a floating label.",
+    ["speed label"] = "Shows the ball speed as a floating label.",
+    ["duality auto triggerbot"] = "Parries instantly when you are targeted.",
+    ["sing v1 auto triggerbot"] = "Parries instantly when you are targeted.",
+    ["infinity auto triggerbot"] = "Parries instantly when you are targeted.",
+    ["infinity avoid"] = "When you use your ability, autoparry turns off until the ability runs out.",
+    ["infinity in radius"] = "If player with infinity and the ball is in this stud radius then infinity triggerbot will activate",
+    ["infinity trigger dist"] = "Distance at which infinity triggerbot fires.",
+    ["singularity avoid"] = "When you use your ability, autoparry turns off until the ability runs out.",
+    ["ghost trail"] = "Draws a faded ghost trail behind the ball.",
+    ["maximum distance"] = "How far away the ball can be for autoparry to work.",
+    ["minimum distance"] = "How close the ball must be for autoparry to work.",
+    ["no repeat"] = "Prevents the same action from firing twice in a row.",
+    ["once"] = "Runs the action only one time per ball.",
+    ["panic range"] = "How close the ball must be to trigger panic parry.",
+    ["panic speed"] = "How fast the panic parry works.",
+    ["parry accuracy"] = "Lower = wait before parrying. Higher = parry further out. Does not overwrite current lead, just works on top of it.",
+    ["pre-turn"] = "Turns your character slightly before the ball arrives.",
+    ["random"] = "Picks a random value from the configured range.",
+    ["randomize"] = "Randomizes the selected value each round.",
+    ["randomize max"] = "Highest value the randomizer can choose.",
+    ["randomize min"] = "Lowest value the randomizer can choose.",
+    ["show above head"] = "Draws the label above the character's head.",
+    ["spin"] = "Spins certain auto parry visuals.",
+    ["spin speed"] = "How fast the spin effect rotates.",
+    ["trail length"] = "How long the ball trail is drawn.",
+    ["trail thickness"] = "How thick the ball trail is drawn.",
+    ["training ball autoparry"] = "Enables autoparry against training balls.",
+    ["advanced directions"] = "Fine-grained control over parry directions.",
+    ["advanced direction"] = "Fine-grained control over parry directions.",
+    ["directions"] = "Picks through the option you choose in the dropdown and randomizes it when \"Random\" is toggled on",
+    ["standard direction"] = "Uses the standard single parry direction.",
+    ["auto anti-curve"] = "Reads how curved the ball is while going to you. Closer to 0 = ball needs to be more straight to parry. -1 = ball can be extremely curved and it will still auto parry.",
+    ["custom anti-curve"] = "Reads how curved the ball is while going to you. Closer to 0 = ball needs to be more straight to parry. -1 = ball can be extremely curved and it will still auto parry.",
+    ["auto-lead"] = "Decides how far or close the ball needs to be for you to parry.",
+    ["custom-lead"] = "Decides how far or close the ball needs to be for you to parry.",
+}
+
+TIP.KB = { text = "Keybind" }
+
+local TIP_W, TIP_CHARS, TIP_LINE_H = 252, 34, 15
+local TIP_VP = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
+local tipSX, tipSY = TIP_VP.X, TIP_VP.Y
+local tipBox = D("Square", { Filled = true, Color = Color3.fromRGB(16, 16, 21), ZIndex = 40, Rounding = 4 })
+local tipBd = D("Square", { Filled = false, Color = C_ACC, Thickness = 1, ZIndex = 41, Rounding = 4 })
+local tipAcc = D("Square", { Filled = true, Color = C_ACC, ZIndex = 42 })
+local tipTitle = T(13, C_WHT)
+tipTitle.ZIndex = 42
+local tipLines = {}
+for _ = 1, 6 do
+    local ln = T(12, C_GRY2)
+    ln.ZIndex = 42
+    tipLines[#tipLines + 1] = ln
+end
+local tipActive = false
+
+local function hideTooltip()
+    if not tipActive then return end
+    tipActive = false
+    tipBox.Visible = false
+    tipBd.Visible = false
+    tipAcc.Visible = false
+    tipTitle.Visible = false
+    for i = 1, #tipLines do tipLines[i].Visible = false end
+end
+
+local function showTooltip(el, mx, my)
+    local name = el.text or ""
+    local desc = TIP_DESC[name:lower()] or ("Adjusts the " .. name .. " setting.")
+    local words, line, lines = {}, "", {}
+    for word in desc:gmatch("%S+") do words[#words + 1] = word end
+    for i = 1, #words do
+        local extra = (#line > 0 and 1 or 0) + #words[i]
+        if #line > 0 and #line + extra > TIP_CHARS then
+            lines[#lines + 1] = line
+            line = words[i]
+        else
+            line = (#line > 0) and (line .. " " .. words[i]) or words[i]
+        end
+    end
+    if #line > 0 then lines[#lines + 1] = line end
+    local n = math.min(#lines, #tipLines)
+    local h = 34 + n * TIP_LINE_H
+    local px, py = mx + 18, my + 18
+    if px + TIP_W > tipSX - 8 then px = mx - TIP_W - 18 end
+    if py + h > tipSY - 8 then py = tipSY - h - 8 end
+    if px < 8 then px = 8 end
+    if py < 8 then py = 8 end
+    tipBox.Position = Vector2.new(px, py)
+    tipBox.Size = Vector2.new(TIP_W, h)
+    tipBd.Position = Vector2.new(px, py)
+    tipBd.Size = Vector2.new(TIP_W, h)
+    tipAcc.Position = Vector2.new(px, py + 5)
+    tipAcc.Size = Vector2.new(2, h - 10)
+    tipTitle.Text = name
+    tipTitle.Position = Vector2.new(px + 10, py + 7)
+    for i = 1, #tipLines do
+        local ln = tipLines[i]
+        if i <= n then
+            ln.Text = lines[i]
+            ln.Position = Vector2.new(px + 10, py + 27 + (i - 1) * TIP_LINE_H)
+            ln.Visible = true
+        else
+            ln.Visible = false
+        end
+    end
+    tipBox.Visible = true
+    tipBd.Visible = true
+    tipAcc.Visible = true
+    tipTitle.Visible = true
+    tipActive = true
+end
+local function tipLabelBox(el)
+    local kind = el.kind
+    if kind == "Scroll" then return nil end
+    local d, x, y, txt
+    if kind == "Button" then
+        d, txt = el.tx, el.text
+    elseif kind == "TextBox" then
+        d, txt, x, y = el.tx, el.text .. "...", el.x + 15, el.y + 9
+    else
+        d, txt, x = el.lab, el.text, el.x + 9
+        if kind == "Toggle" then y = el.y + 2
+        elseif kind == "Dropdown" or kind == "Combo" then y = el.y + 5
+        else y = el.y + 4 end
+    end
+    if not d then return nil end
+    local ok, b = pcall(function() return d.TextBounds end)
+    local w = (ok and b and b.X and b.X > 0 and b.X) or (#txt * 7)
+    if kind == "Button" then
+        x, y = el.x + el.w / 2 - w / 2, el.y + 9
+    end
+    return { x = x, y = y, w = w, h = 16 }
+end
+
+function TIP.hit(el, mx, my)
+    local r = tipLabelBox(el)
+    if not r then return false end
+    return mx >= r.x and mx <= r.x + r.w and my >= r.y and my <= r.y + r.h
+end
+
+TIP.hide = hideTooltip
+TIP.show = showTooltip
+end
+
+local WHEEL_PNG = "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"
+local WHEEL_W, WHEEL_H = 160, 160
+local WHEEL_R, WHEEL_RS = 76, 76
+local WHEEL_BAR_W, WHEEL_BAR_H = 160, 12
+local WHEEL_PAD, WHEEL_BAR_Y = 8, 176
+_G.__wheelRecent = _G.__wheelRecent or {}
+local wheelRecent = _G.__wheelRecent
+
+local function colorToHex(c)
+    return string.format("#%02X%02X%02X",
+        math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
+end
+
+local function hexToColor(h)
+    if type(h) ~= "string" then return Color3.new(1, 1, 1) end
+    local r = tonumber(h:sub(2, 3), 16) or 255
+    local g = tonumber(h:sub(4, 5), 16) or 255
+    local b = tonumber(h:sub(6, 7), 16) or 255
+    return Color3.new(r / 255, g / 255, b / 255)
+end
+
+local function hsv2rgb(h, s, v)
+    h = h - math.floor(h)
+    local i = math.floor(h * 6)
+    local f = h * 6 - i
+    local p = v * (1 - s)
+    local q = v * (1 - f * s)
+    local t = v * (1 - (1 - f) * s)
+    local r, g, b
+    local m = i % 6
+    if m == 0 then r, g, b = v, t, p
+    elseif m == 1 then r, g, b = q, v, p
+    elseif m == 2 then r, g, b = p, v, t
+    elseif m == 3 then r, g, b = p, q, v
+    elseif m == 4 then r, g, b = t, p, v
+    else r, g, b = v, p, q end
+    return Color3.new(r, g, b)
+end
+
+local function rgb2hsv(c)
+    local r, g, b = c.R, c.G, c.B
+    local mx, mn = math.max(r, g, b), math.min(r, g, b)
+    local d = mx - mn
+    local h = 0
+    if d > 0 then
+        if mx == r then h = ((g - b) / d) % 6
+        elseif mx == g then h = (b - r) / d + 2
+        else h = (r - g) / d + 4 end
+        h = h / 6
+        if h < 0 then h = h + 1 end
+    end
+    return h, mx > 0 and d / mx or 0, mx
+end
+
+local wheelImg, wheelBarSegs, wheelPrevBg, wheelPrev, wheelDot, wheelDotBg, wheelBarDot, wheelBarDotBg, wheelHex, wheelRecentLbl, wheelRecentParts
+local wheelHexBox, wheelHexBoxBg, wheelHexBoxTx
+local wheelHexInput = { value = { Text = "" }, p = nil, focused = false }
+local function makeWheelParts()
+    if wheelImg then return end
+    local ok1, d1 = pcall(base64decode, WHEEL_PNG)
+    if not ok1 then return end
+    wheelImg = D("Image", { Size = Vector2.new(WHEEL_W, WHEEL_H), ZIndex = 11, Visible = false })
+    pcall(function() wheelImg.Data = d1 end)
+    wheelBarSegs = {}
+    for i = 1, 32 do
+        wheelBarSegs[i] = D("Square", { Filled = true, ZIndex = 11, Visible = false })
+    end
+    wheelPrevBg = D("Square", { Filled = true, Color = Color3.new(0, 0, 0), ZIndex = 12, Visible = false })
+    wheelPrev = D("Square", { Filled = true, ZIndex = 13, Visible = false })
+    wheelRecentLbl = T(11, C_GRY)
+    wheelRecentLbl.ZIndex = 13
+    wheelRecentParts = {}
+    for i = 1, 5 do
+        wheelRecentParts[i] = {
+            bg = D("Square", { Filled = true, Color = Color3.new(0, 0, 0), ZIndex = 12, Visible = false }),
+            sw = D("Square", { Filled = true, ZIndex = 13, Visible = false }),
+        }
+    end
+    wheelDotBg = D("Circle", { Filled = true, Radius = 5, Color = Color3.new(0, 0, 0), ZIndex = 12, Visible = false })
+    wheelDot = D("Circle", { Filled = true, Radius = 3, Color = Color3.new(1, 1, 1), ZIndex = 13, Visible = false })
+    wheelBarDotBg = D("Circle", { Filled = true, Radius = 6, Color = Color3.new(0, 0, 0), ZIndex = 12, Visible = false })
+    wheelBarDot = D("Circle", { Filled = true, Radius = 4, Color = Color3.new(1, 1, 1), ZIndex = 13, Visible = false })
+    wheelHex = T(12, C_WHT)
+    wheelHex.ZIndex = 13
+    wheelHexBoxBg = D("Square", { Filled = true, Color = Color3.new(0, 0, 0), ZIndex = 12, Visible = false })
+    wheelHexBox = D("Square", { Filled = true, Color = C_CTRL, ZIndex = 13, Visible = false })
+    wheelHexBoxTx = T(11, C_GRY2)
+    wheelHexBoxTx.ZIndex = 14
+end
+
+local function hideWheelParts()
+    if not wheelImg then return end
+    wheelImg.Visible = false
+    if wheelBarSegs then for i = 1, #wheelBarSegs do wheelBarSegs[i].Visible = false end end
+    wheelPrevBg.Visible = false
+    wheelPrev.Visible = false
+    wheelRecentLbl.Visible = false
+    if wheelRecentParts then
+        for i = 1, #wheelRecentParts do
+            wheelRecentParts[i].bg.Visible = false
+            wheelRecentParts[i].sw.Visible = false
+        end
+    end
+    wheelDot.Visible = false
+    wheelDotBg.Visible = false
+    wheelBarDot.Visible = false
+    wheelBarDotBg.Visible = false
+    wheelHex.Visible = false
+    if wheelHexBox then
+        wheelHexBoxBg.Visible = false
+        wheelHexBox.Visible = false
+        wheelHexBoxTx.Visible = false
+    end
+end
+
+local function wheelPick(p, mx, my)
+    if not p or not p.hsv or not p.owner then return false end
+    local cx0 = p.x + WHEEL_PAD + WHEEL_W / 2
+    local cy0 = p.y + WHEEL_PAD + WHEEL_H / 2
+    local dx, dy = mx - cx0, my - cy0
+    local dist = math.sqrt(dx * dx + dy * dy)
+    local hsv = p.hsv
+    local hit = false
+    if dist <= WHEEL_R then
+        local h = math.atan2(-dy, dx) / (math.pi * 2)
+        if h < 0 then h = h + 1 end
+        hsv.h = h
+        hsv.s = math.max(0, math.min(1, dist / WHEEL_RS))
+        hit = true
+    elseif mx >= p.x + WHEEL_PAD and mx <= p.x + WHEEL_PAD + WHEEL_BAR_W
+        and my >= p.y + WHEEL_BAR_Y and my <= p.y + WHEEL_BAR_Y + WHEEL_BAR_H then
+        hsv.v = math.max(0, math.min(1, (mx - p.x - WHEEL_PAD) / WHEEL_BAR_W))
+        hit = true
+    end
+    if hit then p.owner.value.Color = hsv2rgb(hsv.h, hsv.s, hsv.v) end
+    return hit
+end
+
+local function wheelCommit(p)
+    if not p or not p.owner then return end
+    local hex = colorToHex(p.owner.value.Color)
+    if wheelRecent[1] ~= hex then
+        table.insert(wheelRecent, 1, hex)
+        while #wheelRecent > 5 do table.remove(wheelRecent) end
+    end
+    if p.owner.cb then pcall(p.owner.cb, p.owner.value) end
+end
+
+local function wheelApplyColor(p, c, doCommit)
+    if not p or not p.owner then return end
+    p.owner.value.Color = c
+    local hh, ss, vv = rgb2hsv(c)
+    p.hsv.h, p.hsv.s, p.hsv.v = hh, ss, vv
+    if doCommit then
+        wheelCommit(p)
+    elseif p.owner.cb then
+        pcall(p.owner.cb, p.owner.value)
+    end
+end
+
+wheelHexInput.draw = function(self)
+    if not wheelHexBox then return end
+    local p = self.p
+    if not p then return end
+    wheelHexBoxBg.Visible = true
+    wheelHexBoxBg.Position = Vector2.new(p.x + 174, p.y + 63)
+    wheelHexBoxBg.Size = Vector2.new(52, 21)
+    wheelHexBoxBg.Color = self.focused and C_ACC or Color3.new(0, 0, 0)
+    wheelHexBox.Visible = true
+    wheelHexBox.Position = Vector2.new(p.x + 175, p.y + 64)
+    wheelHexBox.Size = Vector2.new(50, 19)
+    wheelHexBoxTx.Visible = true
+    local txt = "#" .. (self.value.Text or "")
+    if wheelHexBoxTx.Text ~= txt then wheelHexBoxTx.Text = txt end
+    wheelHexBoxTx.Position = Vector2.new(p.x + 177, p.y + 66)
+    wheelHexBoxTx.Color = self.focused and C_WHT or C_GRY2
+end
+
+wheelHexInput.cb = function(value)
+    local raw = ((value.Text or ""):gsub("[^0-9A-Fa-f]", "")):upper():sub(1, 6)
+    value.Text = raw
+    if #raw == 6 and wheelHexInput.p then
+        wheelApplyColor(wheelHexInput.p, hexToColor("#" .. raw), true)
+    end
+end
+
+local function wheelSetHexInput(p)
+    if not p or not p.owner then return end
+    local hex = colorToHex(p.owner.value.Color)
+    wheelHexInput.value.Text = hex:sub(2, 7)
+    wheelHexInput.draw(wheelHexInput)
+end
+
+local function drawWheel(p)
+    makeWheelParts()
+    if not wheelImg then return end
+    local wx, wy = p.x + WHEEL_PAD, p.y + WHEEL_PAD
+    wheelImg.Visible = true
+    wheelImg.Position = Vector2.new(wx, wy)
+    local hsv = p.hsv
+    local segW = WHEEL_BAR_W / 32
+    for i = 1, 32 do
+        local sg = wheelBarSegs[i]
+        sg.Visible = true
+        sg.Position = Vector2.new(wx + (i - 1) * segW, p.y + WHEEL_BAR_Y)
+        sg.Size = Vector2.new(segW + 0.7, WHEEL_BAR_H)
+        sg.Color = hsv2rgb(hsv.h, hsv.s, (i - 0.5) / 32)
+    end
+    local pc = hsv2rgb(hsv.h, hsv.s, hsv.v)
+    wheelPrevBg.Visible = true
+    wheelPrevBg.Position = Vector2.new(p.x + 174, p.y + 6)
+    wheelPrevBg.Size = Vector2.new(52, 52)
+    wheelPrev.Visible = true
+    wheelPrev.Position = Vector2.new(p.x + 176, p.y + 8)
+    wheelPrev.Size = Vector2.new(48, 48)
+    wheelPrev.Color = pc
+    local cx0 = wx + WHEEL_W / 2
+    local cy0 = wy + WHEEL_H / 2
+    local rr = math.max(0, math.min(1, hsv.s)) * WHEEL_RS
+    local ang = hsv.h * math.pi * 2
+    local px = cx0 + math.cos(ang) * rr
+    local py = cy0 - math.sin(ang) * rr
+    wheelDotBg.Visible = true; wheelDotBg.Position = Vector2.new(px, py)
+    wheelDot.Visible = true; wheelDot.Position = Vector2.new(px, py)
+    local bx = wx + math.max(0, math.min(1, hsv.v)) * WHEEL_BAR_W
+    local by = p.y + WHEEL_BAR_Y + WHEEL_BAR_H / 2
+    wheelBarDotBg.Visible = true; wheelBarDotBg.Position = Vector2.new(bx, by)
+    wheelBarDot.Visible = true; wheelBarDot.Position = Vector2.new(bx, by)
+    local c = pc
+    local hex = colorToHex(c)
+    if wheelHex.Text ~= hex then wheelHex.Text = hex end
+    wheelHex.Visible = true
+    wheelHex.Position = Vector2.new(wx, p.y + 200)
+    if #wheelRecent > 0 then
+        wheelRecentLbl.Visible = true
+        wheelRecentLbl.Text = "Last 5 colors"
+        wheelRecentLbl.Position = Vector2.new(wx, p.y + 216)
+        for i = 1, 5 do
+            local rp = wheelRecentParts[i]
+            local hx = wheelRecent[i]
+            local sx = wx + (i - 1) * 31
+            local sy = p.y + 232
+            if hx then
+                rp.bg.Visible = true
+                rp.sw.Visible = true
+                rp.bg.Position = Vector2.new(sx, sy)
+                rp.bg.Size = Vector2.new(28, 20)
+                rp.sw.Position = Vector2.new(sx + 2, sy + 2)
+                rp.sw.Size = Vector2.new(24, 16)
+                rp.sw.Color = hexToColor(hx)
+            else
+                rp.bg.Visible = false
+                rp.sw.Visible = false
+            end
+        end
+    else
+        wheelRecentLbl.Visible = false
+    end
+    wheelHexInput.p = p
+    wheelHexInput.draw(wheelHexInput)
 end
 
 local function fakeOutline(z, thickness)
@@ -218,8 +711,9 @@ local bindingKB = nil
 local kbHeld = {}
 local lastM1, lastM2 = false, false
 local winDrag = false
+local colorDrag = false
 local dragOffX, dragOffY = 0, 0
-local hovEl, hovKB, hovSwatch = nil, nil, nil
+local hovEl, hovKB, hovSwatch, hovTip = nil, nil, nil, nil
 local hovTab, hovSec = nil, nil
 local hovSector = nil
 local hovRow = nil
@@ -231,13 +725,50 @@ local function inRect(mx, my, x, y, w, h)
     return mx >= x and mx <= x + w and my >= y and my <= y + h
 end
 
-local WIN_W, WIN_H = 620, 440
-_G.__hdrBg = D("Square", { Filled = true, Color = Color3.fromRGB(22, 22, 26), Size = Vector2.new(WIN_W, 44), ZIndex = 3, Rounding = 0, Visible = false })
+local BASE_WIN_W, BASE_WIN_H = 620, 440
+local WIN_W, WIN_H = BASE_WIN_W, BASE_WIN_H
+_G.__uiScale = _G.__uiScale or 1
+_G.__hdrBg = DBG("Square", { Filled = true, Color = Color3.fromRGB(22, 22, 26), Size = Vector2.new(WIN_W, 44), ZIndex = 3, Rounding = 0, Visible = false })
 _G.__hdrBd = D("Square", { Filled = true, Color = Color3.fromRGB(38, 38, 44), Size = Vector2.new(WIN_W, 1), ZIndex = 4, Visible = false })
 _G.__hdrMark = D("Square", { Filled = true, Color = C_ACC, Size = Vector2.new(3, 16), ZIndex = 6, Visible = false })
 accentReg[#accentReg + 1] = _G.__hdrMark
 _G.__sideSep = D("Square", { Filled = true, Color = Color3.fromRGB(38, 38, 44), Size = Vector2.new(1, 1), ZIndex = 4, Visible = false })
-local winBg = D("Square", { Filled = true, Color = Color3.fromRGB(11, 11, 14), Size = Vector2.new(WIN_W, WIN_H), ZIndex = 2, Rounding = 2, Visible = false })
+local winBg = DBG("Square", { Filled = true, Color = Color3.fromRGB(11, 11, 14), Size = Vector2.new(WIN_W, WIN_H), ZIndex = 2, Rounding = 2, Visible = false })
+_G.swapBgColor = function(c)
+    local base = c or Color3.fromRGB(11, 11, 14)
+    local function shade(dr, dg, db)
+        return Color3.new(
+            math.clamp(base.R + dr, 0, 1),
+            math.clamp(base.G + dg, 0, 1),
+            math.clamp(base.B + db, 0, 1)
+        )
+    end
+    local hdr = shade(11 / 255, 11 / 255, 12 / 255)
+    local cnt = shade(5 / 255, 5 / 255, 6 / 255)
+    local tabH = shade(19 / 255, 19 / 255, 22 / 255)
+    local outer = shade(27 / 255, 27 / 255, 30 / 255)
+    local outerH = shade(47 / 255, 49 / 255, 54 / 255)
+    local contH = shade(11 / 255, 11 / 255, 13 / 255)
+    _G._bgBase = base
+    _G._bgHdr = hdr
+    _G._bgCnt = cnt
+    _G._bgTabA = cnt
+    _G._bgTabH = tabH
+    _G._bgSectOuter = outer
+    _G._bgSectOuterH = outerH
+    _G._bgSectCont = cnt
+    _G._bgSectContH = contH
+    _G._tabBgA = cnt
+    _G._tabBgH = tabH
+    if winBg then pcall(function() winBg.Color = base end) end
+    if _G.__hdrBg then pcall(function() _G.__hdrBg.Color = hdr end) end
+    if _G.contentBg then pcall(function() _G.contentBg.Color = cnt; _G.contentBg.Transparency = 0 end) end
+    for _, sect in ipairs(_G._allSectors or {}) do
+        if sect.outer then pcall(function() sect.outer.Color = outer; sect.outer.Transparency = 0; sect.outer.Rounding = 2 end) end
+        if sect.cont then pcall(function() sect.cont.Color = cnt; sect.cont.Transparency = 0; sect.cont.Rounding = 2 end) end
+        if sect.border then pcall(function() sect.border.Color = _G._bdrClr or Color3.fromRGB(38, 38, 44) end) end
+    end
+end
 _G.swapBgForAccent = function(c)
     local col = c or Color3.fromRGB(255, 255, 255)
     _G._uiAccent = col
@@ -247,16 +778,13 @@ _G.swapBgForAccent = function(c)
     _G._bgIsPink = false
     _G._sectClr = Color3.fromRGB(38, 38, 44)
     _G._bdrClr = Color3.fromRGB(38, 38, 44)
-    _G._tabBgA = Color3.fromRGB(16, 16, 20)
-    _G._tabBgH = Color3.fromRGB(30, 30, 36)
-    if contentBg then pcall(function() contentBg.Color = Color3.fromRGB(16, 16, 20); contentBg.Transparency = 0 end) end
-    for _, sect in ipairs(_G._allSectors or {}) do
-        if sect.outer then pcall(function() sect.outer.Color = Color3.fromRGB(38, 38, 44); sect.outer.Transparency = 0.0; sect.outer.Rounding = 2 end) end
-        if sect.cont then pcall(function() sect.cont.Color = Color3.fromRGB(16, 16, 20); sect.cont.Transparency = 0.0; sect.cont.Rounding = 2 end) end
-        if sect.border then pcall(function() sect.border.Color = _G._bdrClr end) end
-    end
     if contentBd then pcall(function() contentBd.Color = Color3.fromRGB(38, 38, 44) end) end
     if railBd then pcall(function() railBd.Color = Color3.fromRGB(38, 38, 44) end) end
+    if type(_G._genUIBg) == "string" and #_G._genUIBg == 6 then
+        _G.swapBgColor(hexToColor("#" .. _G._genUIBg))
+    else
+        _G.swapBgColor()
+    end
 end
 local uiAlpha = 1
 local menuFade = 0
@@ -268,7 +796,7 @@ do
     accentReg[#accentReg + 1] = titleSepSegs[1]
     titleSepSegs[1].Visible = false
 end
-_G.contentBg = D("Square", { Filled = true, Color = Color3.fromRGB(16, 16, 20), Transparency = 0.0, ZIndex = 3, Rounding = 2 })
+_G.contentBg = DBG("Square", { Filled = true, Color = Color3.fromRGB(16, 16, 20), Transparency = 0.0, ZIndex = 3, Rounding = 2 })
 local titleGlow = D("Square", { Filled = true, Color = C_ACC, Size = Vector2.new(120, 2), ZIndex = 7 })
 local titleGlowCore = D("Square", { Filled = true, Color = C_ACC, Size = Vector2.new(120, 1), ZIndex = 7 })
 _G.contentBd = fakeOutline(4, 1)
@@ -282,7 +810,7 @@ xBtn.Text = "X"
 _G.railBd = fakeOutline(4, 1)
 railBd.Color = Color3.fromRGB(38, 38, 44)
 
-local avRing = D("Circle", { Filled = true, Radius = 27, Color = C_CNT, ZIndex = 4, Visible = false })
+local avRing = D("Circle", { Filled = true, Radius = 13, Color = C_CNT, ZIndex = 4, Visible = false })
 local avImg = D("Image", { Size = Vector2.new(40, 40), ZIndex = 5, Visible = false })
 local avName = T(21, C_WHT)
 avName.Outline = true
@@ -637,10 +1165,27 @@ for i = 1, 20 do
     end
 end
 
+local renderPopupBase = renderPopup
+renderPopup = function()
+    renderPopupBase()
+    local p = openPopup
+    if not p or not gShow or p.kind ~= "color" then
+        if focusTextBox == wheelHexInput then focusTextBox = nil end
+        wheelHexInput.focused = false
+        hideWheelParts()
+        return
+    end
+    wheelHexInput.focused = (focusTextBox == wheelHexInput)
+    drawWheel(p)
+end
+
 local function openDrop(el)
     if openPopup then if openPopup.owner then openPopup.owner.open = false end end
+    local n = math.min(#el.opts, 20)
+    el.popH = n * 18
     openPopup = { kind = el.kind, x = el.popX, y = el.popY, h = el.popH, w = el.popW or 228, owner = el, rows = {} }
-    for i, o in ipairs(el.opts) do
+    for i = 1, n do
+        local o = el.opts[i]
         local sel
         if el.kind == "Dropdown" then sel = o == el.value.Dropdown
         else sel = table.find(el.value.Combo, o) ~= nil end
@@ -742,7 +1287,7 @@ local function makeElement(type, text, data, cb, sector, tabNum, secName)
         el.add_color = function(default)
             if el.cl then return el.cl end
             el.cl = {
-                swatch = D("Square", { Filled = true, Color = C_WHT, Size = Vector2.new(35, 11), ZIndex = 7 }),
+                swatch = D("Square", { Filled = true, Color = (default and default.Color) or Color3.fromRGB(255, 255, 255), Size = Vector2.new(35, 11), ZIndex = 7 }),
                 value = { Color = (default and default.Color) or Color3.fromRGB(255, 255, 255), Transparency = 0 },
                 defC = (default and default.Color) or Color3.fromRGB(255, 255, 255),
                 rect = { x = 0, y = 0, w = 35, h = 11 },
@@ -870,7 +1415,7 @@ local function makeElement(type, text, data, cb, sector, tabNum, secName)
             if v ~= el.value.Slider then
                 el.value.Slider = v
                 commit()
-                if el.cb then pcall(el.cb, el.value) end
+                if el.cb and not (el.releaseOnly and el.dragging) then pcall(el.cb, el.value) end
             end
         end
         commit()
@@ -932,6 +1477,7 @@ local function makeElement(type, text, data, cb, sector, tabNum, secName)
         end
         el.click = function()
             focusTextBox = el
+            uiSettle = 30
         end
 
     elseif type == "Scroll" then
@@ -1039,6 +1585,7 @@ function library:save_cfg(name)
         end
     end
     local ok, err = pcall(function() writefile(CFG_DIR .. "\\" .. name .. ".txt", HttpService:JSONEncode(flat)) end)
+    _G.__remyLegacyCfgDirty = true
 end
 
 function library:load_cfg(name)
@@ -1062,7 +1609,8 @@ function library:set_alpha(a)
         if type(bt) ~= "number" then bt = 0 end
         local mf = menuFade
         if mf < 1 and isTextD[i] then mf = mf ^ 0.55 end
-        pcall(function() allD[i].Transparency = bt * uiAlpha * mf end)
+        local al = bgIdx[i] and uiAlpha or 1
+        pcall(setDTransparency, allD[i], bt * al * mf)
     end
 end
 local function applyMenuFade()
@@ -1071,7 +1619,8 @@ local function applyMenuFade()
         if type(bt) ~= "number" then bt = 0 end
         local mf = menuFade
         if mf < 1 and isTextD[i] then mf = mf ^ 0.55 end
-        pcall(function() allD[i].Transparency = bt * uiAlpha * mf end)
+        local al = bgIdx[i] and uiAlpha or 1
+        pcall(setDTransparency, allD[i], bt * al * mf)
     end
 end
 _G.applyMenuFade = applyMenuFade
@@ -1224,12 +1773,37 @@ function library.new(title, cfgDir)
     return menu
 end
 
-local RAIL_X, RAIL_Y, RAIL_W, RAIL_H = 12, 50, 102, 57
-local TB_W, TB_H = 102, 56
-local SIDE_X, SIDE_Y, SIDE_W, SIDE_H = 12, 116, 132, 30
-local COL_X, COL_Y, COL_W = 156, 116, 450
-local COL_GAP, COL_LEFT_W = 8, 211
-local SEC_H = 30
+local BASE_RAIL_X, BASE_RAIL_Y, BASE_RAIL_W, BASE_RAIL_H = 12, 50, 102, 57
+local BASE_TB_W, BASE_TB_H = 102, 56
+local BASE_SIDE_X, BASE_SIDE_Y, BASE_SIDE_W, BASE_SIDE_H = 12, 116, 132, 30
+local BASE_COL_X, BASE_COL_Y, BASE_COL_W = 156, 116, 450
+local BASE_COL_GAP, BASE_COL_LEFT_W = 8, 211
+local BASE_SEC_H = 30
+local RAIL_X, RAIL_Y, RAIL_W, RAIL_H = BASE_RAIL_X, BASE_RAIL_Y, BASE_RAIL_W, BASE_RAIL_H
+local TB_W, TB_H = BASE_TB_W, BASE_TB_H
+local SIDE_X, SIDE_Y, SIDE_W, SIDE_H = BASE_SIDE_X, BASE_SIDE_Y, BASE_SIDE_W, BASE_SIDE_H
+local COL_X, COL_Y, COL_W = BASE_COL_X, BASE_COL_Y, BASE_COL_W
+local COL_GAP, COL_LEFT_W = BASE_COL_GAP, BASE_COL_LEFT_W
+local SEC_H = BASE_SEC_H
+_G.__applyUiScale = function(s)
+    s = math.clamp(tonumber(s) or 1, 0.75, 1.25)
+    _G.__uiScale = s
+    local function px(v) return math.floor(v * s + 0.5) end
+    WIN_W, WIN_H = px(BASE_WIN_W), px(BASE_WIN_H)
+    RAIL_X, RAIL_Y, RAIL_W, RAIL_H = px(BASE_RAIL_X), px(BASE_RAIL_Y), px(BASE_RAIL_W), px(BASE_RAIL_H)
+    TB_W, TB_H = px(BASE_TB_W), px(BASE_TB_H)
+    SIDE_X, SIDE_Y, SIDE_W, SIDE_H = px(BASE_SIDE_X), px(BASE_SIDE_Y), px(BASE_SIDE_W), px(BASE_SIDE_H)
+    COL_X, COL_Y, COL_W = px(BASE_COL_X), px(BASE_COL_Y), px(BASE_COL_W)
+    COL_GAP, COL_LEFT_W = px(BASE_COL_GAP), px(BASE_COL_LEFT_W)
+    SEC_H = px(BASE_SEC_H)
+    for i, d in ipairs(allD) do
+        if isTextD[i] then
+            local b = baseSz[i]
+            if b then d.Size = math.max(6, math.floor(b * s + 0.5)) end
+        end
+    end
+    uiSettle = 30
+end
 
 _G.__hideEl = function(el)
     el.show = false
@@ -1293,7 +1867,6 @@ local function layout()
     do
         local ax = x0 + WIN_W - 216
         local ay = y0 + 8
-        avRing.Radius = 13
         avRing.Position = Vector2.new(ax + 13, ay + 13)
         avImg.Position = Vector2.new(ax, ay)
         avImg.Size = Vector2.new(28, 28)
@@ -1419,6 +1992,7 @@ local function layout()
     local maxScroll = math.max(0, contentH - viewH)
     local sc = math.clamp(activeSec.scrollY or 0, 0, maxScroll)
     activeSec.scrollY = sc
+    scrollSave[tostring(tab.tabNum) .. "|" .. tostring(activeSec.name)] = sc
 
     for _, sec in ipairs(activeSec.sectors) do
         local isR = sec.side == "Right"
@@ -1433,9 +2007,9 @@ local function layout()
         local pd = pt - (sec._pop or 0)
         if math.abs(pd) < 0.02 then sec._pop = pt else sec._pop = (sec._pop or 0) + pd * 0.25 end
         local po = sec._pop * 4
-        sec.outer.Color = colLerp(Color3.fromRGB(38, 38, 44), Color3.fromRGB(58, 60, 68), sec._pop)
-        sec.cont.Color = colLerp(Color3.fromRGB(16, 16, 20), Color3.fromRGB(22, 22, 27), sec._pop)
-        sec.border.Color = colLerp(Color3.fromRGB(38, 38, 44), Color3.fromRGB(58, 60, 68), sec._pop)
+        sec.outer.Color = colLerp(_G._bgSectOuter or Color3.fromRGB(38, 38, 44), _G._bgSectOuterH or Color3.fromRGB(58, 60, 68), sec._pop)
+        sec.cont.Color = colLerp(_G._bgSectCont or Color3.fromRGB(16, 16, 20), _G._bgSectContH or Color3.fromRGB(22, 22, 27), sec._pop)
+        sec.border.Color = colLerp(_G._bdrClr or Color3.fromRGB(38, 38, 44), Color3.fromRGB(58, 60, 68), sec._pop)
         sec.outer.Visible = vis
         sec.cont.Visible = vis
         sec.border.Visible = vis
@@ -1451,6 +2025,7 @@ local function layout()
         sec.title.Position = Vector2.new(col.x + po + 14, sy + 5)
 
         if sec._colBtn then sec._colBtn.Text = sec._collapsed and "+" or "-"; sec._colBtn.Position = Vector2.new(col.x + po + COL_LEFT_W - 14, sy + 6); sec._colRect = { x = col.x + po + COL_LEFT_W - 16, y = sy + 5, w = 14, h = 14 } end
+        collapseSave[tostring(tab.tabNum) .. "|" .. tostring(activeSec.name) .. "|" .. tostring(sec.name)] = sec._collapsed == true
         local tvis = vis and (sy + 5) >= cTop
         sec.title.Visible = tvis
         sec.bar.Visible = tvis
@@ -1544,8 +2119,35 @@ local function layout()
     end
 end
 
+_G.__applyUiScrollSave = function(data)
+    if type(data) ~= "table" then return end
+    for _, tb in ipairs(tabHandles) do
+        for _, sec in ipairs(tb.sections) do
+            local k = tostring(tb.tabNum) .. "|" .. tostring(sec.name)
+            if type(data[k]) == "number" then sec.scrollY = math.max(0, data[k]) end
+        end
+    end
+end
+
+_G.__applyUiCollapseSave = function(data)
+    if type(data) ~= "table" then return end
+    for _, tb in ipairs(tabHandles) do
+        for _, sec in ipairs(tb.sections) do
+            for _, sector in ipairs(sec.sectors) do
+                local k = tostring(tb.tabNum) .. "|" .. tostring(sec.name) .. "|" .. tostring(sector.name)
+                if type(data[k]) == "boolean" then sector._collapsed = data[k] end
+            end
+        end
+    end
+end
+
 local m1Prev = false
 local function handleClick(mx, my)
+    if focusTextBox then
+        if focusTextBox == wheelHexInput then wheelHexInput.focused = false end
+        focusTextBox = nil
+        uiSettle = 30
+    end
     if minRect and inRect(mx, my, minRect.x, minRect.y, minRect.w, minRect.h) then
         minimized = not minimized
         openPopup = nil
@@ -1565,6 +2167,46 @@ local function handleClick(mx, my)
             dragOffY = my - uiPos.Y
         end
         return
+    end
+    if openPopup and openPopup.kind == "color" then
+        local p = openPopup
+        if wheelHexBox and inRect(mx, my, p.x + 174, p.y + 63, 52, 21) then
+            wheelHexInput.p = p
+            focusTextBox = wheelHexInput
+            wheelHexInput.focused = true
+            uiSettle = 30
+            return true
+        end
+        if focusTextBox == wheelHexInput then focusTextBox = nil end
+        if wheelPick(p, mx, my) then
+            wheelSetHexInput(p)
+            colorDrag = true
+            wheelCommit(p)
+            return true
+        end
+        if wheelRecentParts and p.owner then
+            for i = 1, #wheelRecentParts do
+                local hx = wheelRecent[i]
+                if hx and wheelRecentParts[i].sw.Visible then
+                    local sx = p.x + WHEEL_PAD + (i - 1) * 31
+                    local sy = p.y + 232
+                    if inRect(mx, my, sx, sy, 28, 20) then
+                        p.owner.value.Color = hexToColor(hx)
+                        local hh, ss, vv = rgb2hsv(p.owner.value.Color)
+                        p.hsv.h, p.hsv.s, p.hsv.v = hh, ss, vv
+                        wheelSetHexInput(p)
+                        colorDrag = false
+                        wheelCommit(p)
+                        return true
+                    end
+                end
+            end
+        end
+        if focusTextBox == wheelHexInput then focusTextBox = nil end
+        if p.owner then p.owner.open = false end
+        openPopup = nil
+        colorDrag = false
+        return true
     end
     if openPopup then
         if inRect(mx, my, openPopup.x, openPopup.y, openPopup.w or 228, openPopup.h) then
@@ -1587,6 +2229,7 @@ local function handleClick(mx, my)
         else
             if openPopup.owner then openPopup.owner.open = false end
             openPopup = nil
+            return true
         end
     end
 
@@ -1618,6 +2261,7 @@ local function handleClick(mx, my)
                         local cr = sec._colRect
                         if cr and inRect(mx, my, cr.x, cr.y, cr.w, cr.h) then
                             sec._collapsed = not sec._collapsed
+                            if _G.__remyUiCollapseChanged then _G.__remyUiCollapseChanged() end
                             uiSettle = 25
                             openPopup = nil
                             return true
@@ -1632,14 +2276,17 @@ local function handleClick(mx, my)
                                 bindingKB = el.kb
                                 return true
                             end
-                            if el.cl and inRect(mx, my, el.cl.rect.x, el.cl.rect.y, el.cl.rect.w, el.cl.rect.h) then
-                                local list = el.cl.isAccent and PRESETS or AP_PRESETS
-                                openPopup = { kind = "color", owner = el.cl, x = r.x + r.w - 120, y = r.y, w = 120, h = #list * 18, rows = {} }
-                                local cur = el.cl.value.Color
-                                for i, pr in ipairs(list) do
-                                    local m = math.abs(cur.R - pr[2].R) < 0.01 and math.abs(cur.G - pr[2].G) < 0.01 and math.abs(cur.B - pr[2].B) < 0.01
-                                    openPopup.rows[i] = { txt = pr[1], color = pr[2], sel = m }
-                                end
+                            if el.cl and (el.cl.rowOpen or inRect(mx, my, el.cl.rect.x, el.cl.rect.y, el.cl.rect.w, el.cl.rect.h)) then
+                                makeWheelParts()
+                                local hh, ss, vv = rgb2hsv(el.cl.value.Color)
+                                local py = r.y
+                                pcall(function()
+                                    local vp = game.Workspace.CurrentCamera.ViewportSize
+                                    py = math.max(0, math.min(py, vp.Y - 262))
+                                end)
+                                openPopup = { kind = "color", owner = el.cl, x = math.max(0, r.x + r.w - 232), y = py, w = 232, h = 258, rows = {}, hsv = { h = hh, s = ss, v = vv } }
+                                wheelHexInput.p = openPopup
+                                wheelSetHexInput(openPopup)
                                 return true
                             end
                             el:click()
@@ -1711,6 +2358,14 @@ local menuMouse
 pcall(function()
     if lp then menuMouse = lp:GetMouse() end
 end)
+local function currentMouse(m)
+    if uis and uis.GetMouseLocation then
+        local ok, v = pcall(uis.GetMouseLocation, uis)
+        if ok and v then return v.X, v.Y end
+    end
+    if m then return m.X, m.Y end
+    return 0, 0
+end
 conn = RunService.RenderStepped:Connect(function()
     if not running or GEN ~= _G_._genGEN then
         conn:Disconnect()
@@ -1723,8 +2378,10 @@ conn = RunService.RenderStepped:Connect(function()
         m = menuMouse
     end
 
-    local mx, my = 0, 0
-    if m then mx, my = m.X, m.Y end
+    local mx, my = currentMouse(m)
+    if winDrag then
+        uiPos = Vector2.new(mx - dragOffX, math.max(0, my - dragOffY))
+    end
     local _splashAgain = (_G.__splashActive == true) or (_G.__splashWaiting == true) or (_G.__splashEnd ~= nil and tick() < _G.__splashEnd + 0.6)
     if menuFade <= 0.01 then
         for _, tb in ipairs(tabHandles or {}) do
@@ -1736,6 +2393,7 @@ conn = RunService.RenderStepped:Connect(function()
             end
         end
     end
+    if not menuOpen or _splashAgain then _G.__remyTip.hide() end
     local fadeTgt = (menuOpen and _G._genLoaded and not _splashAgain) and 1 or 0
     if _splashAgain then menuFade = 0 end
     if menuFade ~= fadeTgt then
@@ -1769,7 +2427,7 @@ conn = RunService.RenderStepped:Connect(function()
         end
 
         if menuOpen then
-        hovEl, hovKB, hovSwatch, hovTab, hovSec, hovRow, hovSector = nil, nil, nil, nil, nil, nil, nil
+        hovEl, hovKB, hovSwatch, hovTip, hovTab, hovSec, hovRow, hovSector = nil, nil, nil, nil, nil, nil, nil, nil
         if openPopup and inRect(mx, my, openPopup.x, openPopup.y, openPopup.w or 228, openPopup.h) then
             hovRow = math.floor((my - openPopup.y) / 18) + 1
         else
@@ -1790,8 +2448,10 @@ conn = RunService.RenderStepped:Connect(function()
                         for _, el in ipairs(sec.elements) do
                             if el.rect and inRect(mx, my, el.rect.x, el.rect.y, el.rect.w, el.rect.h) then
                                 hovEl = el
+                                if _G.__remyTip.hit(el, mx, my) then hovTip = el end
                                 if el.kb and inRect(mx, my, el.kb.rect.x, el.kb.rect.y, el.kb.rect.w, el.kb.rect.h) then
                                     hovKB = el.kb
+                                    hovTip = _G.__remyTip.KB
                                 end
                                 if el.cl and inRect(mx, my, el.cl.rect.x, el.cl.rect.y, el.cl.rect.w, el.cl.rect.h) then
                                     hovSwatch = el.cl
@@ -1804,6 +2464,12 @@ conn = RunService.RenderStepped:Connect(function()
                     end
                 end
             end
+        end
+
+        if hovTip and not openPopup and not minimized and not _splashAgain then
+            _G.__remyTip.show(hovTip, mx, my)
+        else
+            _G.__remyTip.hide()
         end
 
         if m1 and not m1Prev then
@@ -1833,6 +2499,7 @@ conn = RunService.RenderStepped:Connect(function()
                     local frac = span > 0 and math.clamp((my - sdrag.off - sb.trackY) / span, 0, 1) or 0
                     sb.sec.scrollY = frac * sb.max
                     uiSettle = 20
+                    if _G.__remyUiScrollChanged then _G.__remyUiScrollChanged() end
                 end
             else
                 _G.__uiScrollDrag = nil
@@ -1859,7 +2526,10 @@ conn = RunService.RenderStepped:Connect(function()
                     if activeSec then
                         for _, sec in ipairs(activeSec.sectors) do
                             for _, el in ipairs(sec.elements) do
-                                if el.dragging then el.dragging = false end
+                                if el.dragging then
+                                    el.dragging = false
+                                    if el.releaseOnly and el.cb then pcall(el.cb, el.value) end
+                                end
                             end
                         end
                     end
@@ -1867,10 +2537,17 @@ conn = RunService.RenderStepped:Connect(function()
             end
         end
 
-        if winDrag then
-            uiPos = Vector2.new(mx - dragOffX, math.max(0, my - dragOffY))
-        end
         if not m1 then winDrag = false end
+        if colorDrag then
+            if openPopup and openPopup.kind == "color" and m1 then
+                wheelPick(openPopup, mx, my)
+                wheelSetHexInput(openPopup)
+                uiSettle = 25
+            else
+                if openPopup then wheelCommit(openPopup) end
+                colorDrag = false
+            end
+        end
         end
         winBg.Visible = true
         winBd.Visible = true
@@ -2023,6 +2700,10 @@ conn = RunService.RenderStepped:Connect(function()
                     sector.bar.Visible = false
                     sector.title.Visible = false
                     for _, el in ipairs(sector.elements) do
+                        if el.dragging then
+                            el.dragging = false
+                            if el.releaseOnly and el.cb then pcall(el.cb, el.value) end
+                        end
                         el.show = false
                         el:draw()
                     end
@@ -2035,6 +2716,7 @@ conn = RunService.RenderStepped:Connect(function()
 end)
 
 local keyPrev = {}
+local backspaceNext = 0
 local insertVK = nameToVK["Insert"]
 local insertPrev = false
 
@@ -2050,42 +2732,62 @@ task.spawn(function()
         insertPrev = ins
 
         if bindingKB then
+            local pressed = nil
             for _, vk in ipairs(commonVKs) do
-                local down = false
-                pcall(function() down = iskeypressed(vk) end)
-                if down and not keyPrev[vk] then
-                    if vk == nameToVK["Escape"] then
-                        bindingKB.value.Key = nil
-                    else
-                        bindingKB.value.Key = vk
-                    end
-                    bindingKB.value.Active = true
-                    if bindingKB.cb then pcall(bindingKB.cb, bindingKB.value) end
-                        bindingKB = nil
-                    break
-                end
+                local okd, down = pcall(iskeypressed, vk)
+                if not okd then down = false end
+                local wasDown = keyPrev[vk]
                 keyPrev[vk] = down
+                if down and not wasDown and not pressed then pressed = vk end
+            end
+            if pressed then
+                uiSettle = 30
+                if pressed == nameToVK["Escape"] then
+                    bindingKB.value.Key = nil
+                else
+                    bindingKB.value.Key = pressed
+                end
+                bindingKB.value.Active = true
+                if bindingKB.cb then pcall(bindingKB.cb, bindingKB.value) end
+                bindingKB = nil
             end
         elseif focusTextBox then
+            local bsVK = nameToVK["Backspace"]
+            local pressed, bsDown = nil, false
             for _, vk in ipairs(commonVKs) do
-                local down = false
-                pcall(function() down = iskeypressed(vk) end)
-                if down and not keyPrev[vk] then
-                    if vk == nameToVK["Enter"] or vk == nameToVK["Escape"] then
-                        focusTextBox = nil
-                    elseif vk == nameToVK["Backspace"] then
-                        local txt = focusTextBox.value.Text or ""
-                        focusTextBox.value.Text = txt:sub(1, #txt - 1)
-                    else
-                        local ch = vkChar(vk)
-                        if ch and #(focusTextBox.value.Text or "") < 60 then
-                            focusTextBox.value.Text = (focusTextBox.value.Text or "") .. ch
-                        end
-                    end
-                    if focusTextBox and focusTextBox.cb then pcall(focusTextBox.cb, focusTextBox.value) end
-                    break
-                end
+                local okd, down = pcall(iskeypressed, vk)
+                if not okd then down = false end
+                local wasDown = keyPrev[vk]
                 keyPrev[vk] = down
+                if vk == bsVK then bsDown = down end
+                if down and not wasDown and not pressed then pressed = vk end
+            end
+            local nowT = tick()
+            local act = nil
+            if not bsDown then backspaceNext = 0 end
+            if pressed and (focusTextBox ~= wheelHexInput or nowT >= (wheelHexInput.nextKey or 0)) then
+                act = pressed
+                if focusTextBox == wheelHexInput then wheelHexInput.nextKey = nowT + 0.05 end
+                backspaceNext = nowT + 0.35
+            elseif bsDown and nowT >= backspaceNext then
+                act = bsVK
+                backspaceNext = nowT + 0.07
+            end
+            if act then
+                uiSettle = 30
+                if act == nameToVK["Enter"] or act == nameToVK["Escape"] then
+                    focusTextBox = nil
+                elseif act == bsVK then
+                    local txt = focusTextBox.value.Text or ""
+                    if #txt > 0 then focusTextBox.value.Text = txt:sub(1, #txt - 1) end
+                else
+                    local ch = vkChar(act)
+                    if ch and #(focusTextBox.value.Text or "") < 60 then
+                        focusTextBox.value.Text = (focusTextBox.value.Text or "") .. ch
+                    end
+                end
+                if focusTextBox and focusTextBox.cb then pcall(focusTextBox.cb, focusTextBox.value) end
+                if focusTextBox then pcall(focusTextBox.draw, focusTextBox) end
             end
         else
             if menuOpen and not minimized then
@@ -2105,6 +2807,7 @@ task.spawn(function()
                             _G.__uiScrollKeyT = now
                             sb.sec.scrollY = math.clamp((sb.sec.scrollY or 0) + d, 0, sb.max)
                             uiSettle = 20
+                            if _G.__remyUiScrollChanged then _G.__remyUiScrollChanged() end
                         end
                     end
                 end
@@ -2149,13 +2852,16 @@ end)
 task.spawn(function()
     while running and GEN == _G_._genGEN do
         pcall(function()
-        local files = listCfg(CFG_DIR)
-        for _, tb in ipairs(tabHandles) do
-            for _, sec in ipairs(tb.sections) do
-                for _, sector in ipairs(sec.sectors) do
-                    for _, el in ipairs(sector.elements) do
-                        if el.kind == "Scroll" then
-                            for _, f in ipairs(files) do el:add_value(f) end
+        if _G.__remyLegacyCfgDirty then
+            _G.__remyLegacyCfgDirty = false
+            local files = listCfg(CFG_DIR)
+            for _, tb in ipairs(tabHandles) do
+                for _, sec in ipairs(tb.sections) do
+                    for _, sector in ipairs(sec.sectors) do
+                        for _, el in ipairs(sector.elements) do
+                            if el.kind == "Scroll" then
+                                for _, f in ipairs(files) do el:add_value(f) end
+                            end
                         end
                     end
                 end
@@ -2200,7 +2906,6 @@ _G.__animUpdate = function(x0, y0, w, h, fade)
     elseif u then u.Visible = false end
 
     if avRing then
-        avRing.Radius = 13
     end
 end
 _G.__particles = nil
@@ -2244,15 +2949,19 @@ _G.__fallUpdate = function(x0, y0, w, h, fade)
         if p.rx < 0 then p.rx = w end
         if p.rx > w then p.rx = 0 end
         if p.ry > h then
-            p.ry = 0 + math.random() * 20
+            p.ry = 44 + math.random() * 20
             p.vy = 20 + math.random() * 40
             p.rx = math.random() * w
         end
-        p.d.Color = colLerp(C_ACC, C_UL, 0.5 + 0.5 * math.sin(now * 0.4 + p.phase))
-        p.d.Position = Vector2.new(x0 + p.rx, y0 + p.ry)
-        p.d.Size = Vector2.new(p.scale * 2.0, p.scale * 2.0)
-        p.d.Transparency = 1 - (0.5 * a)
-        p.d.Visible = true
+        if p.ry >= 44 then
+            p.d.Color = colLerp(C_ACC, C_UL, 0.5 + 0.5 * math.sin(now * 0.4 + p.phase))
+            p.d.Position = Vector2.new(x0 + p.rx, y0 + p.ry)
+            p.d.Size = Vector2.new(p.scale * 2.0, p.scale * 2.0)
+            p.d.Transparency = 1 - (0.5 * a)
+            p.d.Visible = true
+        else
+            p.d.Visible = false
+        end
     end
 end
 
@@ -2261,6 +2970,7 @@ _G_._genToken = {
         running = false
         if conn then pcall(function() conn:Disconnect() end) end
         for _, d in ipairs(allD) do pcall(function() d:Remove() end) end
+        _G.__remyTip = nil
         _G_._genToken = nil
     end,
 }
@@ -3353,7 +4063,6 @@ task.spawn(function()
             if st.armed then
                 local disarm = (not targeting) or (type(tb) == "table" and tb.addr ~= st.ball) or (tb.dist and tb.dist > 24) or st.parried == true
                 if disarm then
-                    -- restore
                     if cam and st.sensYaw and st.startYaw then end
                     local function yawOf(cf) local lv = cf.LookVector return math.atan2(lv.X, -lv.Z) end
                     if st.sensYaw then
@@ -3379,11 +4088,9 @@ task.spawn(function()
                 st.held = true
                 task.wait(0.01)
                 local cf = cam.CFrame
-                -- simple immediate turn then parry
                 mousemoverel(lala.curveDir == "Right" and 1266 or -1266, 0)
                 task.wait(0.02)
 
-                -- parry right now
                 st.parried = true
                 local r = pressParry()
                 if r then pcall(r) end
@@ -3472,6 +4179,15 @@ local PANIC_GRACE = 0.5
 _G.__apStats = _G.__apStats or { taps = 0, parries = 0, misses = 0, hits = 0 }
 local stats = _G.__apStats
 stats.hits = stats.hits or 0
+stats.started = tick()
+_G.__apStatEvent = function(kind, rt, why)
+    local st = _G.__apStats
+    if not st then return end
+    st.recent = st.recent or {}
+    local r = st.recent
+    r[#r + 1] = { k = kind, rt = rt or 0, why = why or "" }
+    if #r > 30 then table.remove(r, 1) end
+end
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Exclude
 
@@ -3557,6 +4273,8 @@ if _G.__apHB then pcall(_G.__apHB.Disconnect, _G.__apHB) end
 _G.__apHB = nil
 if _G.__apRS then pcall(_G.__apRS.Disconnect, _G.__apRS) end
 _G.__apRS = nil
+if _G.__apExtraInput then pcall(_G.__apExtraInput.Disconnect, _G.__apExtraInput) end
+_G.__apExtraInput = nil
 if _G.__apCleanup then pcall(_G.__apCleanup) end
 _G.__apCleanup = nil
 if _G.__apPool then
@@ -3919,10 +4637,18 @@ scan = function(dt)
                         w.re = (w.re or 0) + 1
                         if w.re >= 2 then
                             stats.parries = stats.parries + 1
+                            local why = "lead"
+                            if recentlyPanic[a2] and now - recentlyPanic[a2] < PANIC_GRACE then
+                                why = "panic"
+                            elseif dist <= lala.closeRangeDist then
+                                why = "close"
+                            end
+                            if _G.__apStatEvent then pcall(_G.__apStatEvent, "P", now - (ballSpawnedAt[a2] or w.t), why) end
                             genWatch[a2] = nil
                         end
                     elseif now - w.t > 2.5 then
                         stats.misses = stats.misses + 1
+                        if _G.__apStatEvent then pcall(_G.__apStatEvent, "M", 0, "miss") end
                         genWatch[a2] = nil
                     end
                 end
@@ -4094,7 +4820,7 @@ scan = function(dt)
             clashGate.lastTgt = realTgt
             clashGate.tgtSince = tick()
         end
-        clashGate.ok = (realClos ~= nil and realClos > 0.05)
+        clashGate.ok = (realClos ~= nil and realClos > 0)
             and (realTgt == me or realTgt == meId or realTgt == clashPartner)
     else
         clashGate.ok = false
@@ -4156,7 +4882,6 @@ scan = function(dt)
                     end
                 end
             end
-            -- when smart parry on it skips normal/panic/visuals entirely PLEASeworkd dfcwsaglfjvkmawgn
         else
             ymer.smartAcc = nil
             ymer.parryDist = readyLead
@@ -4260,21 +4985,15 @@ clashLoop = task.spawn(function()
     while clashRunning do
         if bob == _G.__apGen and lala.v2 and not ymer.idle and lala.clash and clashGate.ok then
             local c = tick()
-            local tgtStable = clashGate.tgtSince and (c - clashGate.tgtSince > 0.05)
-            if tgtStable and c - remy.lastTap > 0.001 and not remy.tapping then
-                local uf = _G.__apUserF
-                if uf == 0 or c - uf > lala.userSuppress then
-                    remy.lastTap = c
-                    ymer.flash = c
-                    stats.taps = stats.taps + 1
-                    remy.tapping = true
-                    local rel = pressParry()
-                    task.spawn(function()
-                        task.wait(0.00001)
-                        if rel then pcall(rel) end
-                        remy.tapping = false
-                    end)
-                end
+            local uf = _G.__apUserF
+            if (uf == 0 or c - uf > lala.userSuppress) and c - remy.lastTap > 0.0005 then
+                remy.lastTap = c
+                ymer.flash = c
+                stats.taps = stats.taps + 1
+                remy.tapping = true
+                local rel = pressParry()
+                if rel then pcall(rel) end
+                remy.tapping = false
             end
         end
         task.wait(lala.clash and 0.00001 or 0.05)
@@ -4417,6 +5136,7 @@ _G.__domeDraw = function(pool, tops, ptsIn, vflIn, on)
 end
 
 local rText = {}
+local hudTextCache = {}
 for i = 1, 16 do
     local t = Drawing.new("Text")
     t.Size = 13
@@ -4481,7 +5201,6 @@ local function hideBv(e)
     e.stxt.Visible = false
     e.tline.Visible = false
 end
-local radarBg = Drawing.new("Circle")
 local radarBg = Drawing.new("Circle")
 radarBg.Filled = true
 radarBg.Color = Color3.fromRGB(10, 10, 12)
@@ -6117,7 +6836,7 @@ _G.__apCleanup = function()
     if rebindConn then pcall(rebindConn.Disconnect, rebindConn) end
     rebindConn = nil
     for i = 1, DM * DN * 2 do pcall(triPool[i].Remove, triPool[i]) end
-    for i = 1, 15 do pcall(rText[i].Remove, rText[i]) end
+    for i = 1, #rText do pcall(rText[i].Remove, rText[i]) end
     pcall(hudBg.Remove, hudBg)
 pcall(hudBg2.Remove, hudBg2)
     for i = 1, DN do
@@ -6436,7 +7155,10 @@ conn = RunService.RenderStepped:Connect(function()
         local sysGap = HUD_SYS_GAP
         for i = 1, #lines do
             local r = rText[i]
-            r.Text = lines[i]
+            if hudTextCache[i] ~= lines[i] then
+                hudTextCache[i] = lines[i]
+                r.Text = lines[i]
+            end
             local w = r.TextBounds.X
             local iy
             if i >= sysStart then
@@ -7114,7 +7836,7 @@ end)
 _G.__apConn = conn
 
 pcall(function()
-    uis.InputBegan:Connect(function(inp)
+    _G.__apExtraInput = uis.InputBegan:Connect(function(inp)
         if inp and inp.KeyCode and (tostring(inp.KeyCode) == "Slash" or tostring(inp.KeyCode) == "47") then _G.__typingChat = true end
         if inp and tostring(inp.UserInputType):find("MouseButton1",1,true) then _G.__typingChat = false end
         if inp and inp.KeyCode and (tostring(inp.KeyCode) == "Return" or tostring(inp.KeyCode) == "Enter" or tostring(inp.KeyCode) == "13") then _G.__typingChat = false end
@@ -7144,7 +7866,6 @@ pcall(function()
             local el = ELS and ELS.curveOnHit and ELS.curveOnHit.el
             if el and el.value then el.value.Toggle = lala.curveOnHit end
             pcall(saveConfig)
-            pcall(function() notify("Auto Curve", lala.curveOnHit and "ON" or "OFF", 0.75) end)
         end
     end)
 end)
@@ -7537,7 +8258,6 @@ task.spawn(function()
     _G._loadMode = nil
     if choice == nil then
         _G.__loadChoicePending = true
-        pcall(notify, "gennegen", "Press 1: Full Script | 2: Auto + Circle | 3: No ESPs", 4)
         while choice == nil do
             if keyHeld(49) then choice = 1
             elseif keyHeld(50) then choice = 2
@@ -7618,7 +8338,11 @@ local function cfgData()
         viewEnabled = L.viewEnabled, viewMode = L.viewMode, spin = L.spin, spinSpeed = L.spinSpeed, tether = L.tether, ghostTrail = L.ghostTrail, parryDistInd = L.parryDistInd, curveOnHit = L.curveOnHit, curveDir = L.curveDir, curveAdvanced = L.curveAdvanced, curveRandomSet = L.curveRandomSet, curveFast = L.curveFast,
         uiKey = _G._genUIKey,
         uiAccent = _G._genUIAccent,
+        uiBg = _G._genUIBg,
         uiTrans = _G._genUITrans,
+        uiScale = _G.__uiScale,
+        uiScroll = _G.__remyUiScrollSave,
+        uiCollapse = _G.__remyUiCollapseSave,
         hideCard = _G._genHideCard,
         blurName = _G._genBlurName,
     }
@@ -7643,6 +8367,8 @@ end
 local function saveUI()
     pendingSave = true
 end
+_G.__remyUiScrollChanged = function() saveUI() end
+_G.__remyUiCollapseChanged = function() saveUI() end
 
 local function loadUI()
     pcall(function()
@@ -7655,7 +8381,11 @@ local function loadUI()
         end
         if type(data.uiKey) == "number" then _G._genUIKey = data.uiKey end
         if type(data.uiAccent) == "string" and ver >= 2 then _G._genUIAccent = data.uiAccent end
+        if type(data.uiBg) == "string" and #data.uiBg == 6 then _G._genUIBg = data.uiBg:upper() end
         if type(data.uiTrans) == "number" then _G._genUITrans = math.clamp(data.uiTrans, 35, 100) end
+        if type(data.uiScale) == "number" then _G.__uiScale = math.clamp(data.uiScale, 0.75, 1.25) end
+        if type(data.uiScroll) == "table" then _G.__remyUiScrollPending = data.uiScroll end
+        if type(data.uiCollapse) == "table" then _G.__remyUiCollapsePending = data.uiCollapse end
         if type(data.hideCard) == "boolean" then _G._genHideCard = data.hideCard end
         if type(data.blurName) == "boolean" then _G._genBlurName = data.blurName end
         if _G.applyAvName then _G.applyAvName() end
@@ -7668,6 +8398,7 @@ _G.__genUiPrefs.particles = lala.uiParticles
 _G.__genUiPrefs.ball = lala.uiBall
 
 local menu = library.new("gennegen", "nemv2")
+if _G.__applyUiScale then _G.__applyUiScale(tonumber(_G.__uiScale) or 1) end
 
 local ELS = {}
 
@@ -7898,6 +8629,157 @@ do
     S(psec, "Panic Range", "panicBase", 5, 100, 1, 28)
     S(psec, "Panic Speed", "panicSpeedMul", 1, 200, 1000, 0.08)
 
+    do
+        local st = _G.__apStats
+        if not st then st = {}; _G.__apStats = st end
+        st.taps = st.taps or 0
+        st.parries = st.parries or 0
+        st.misses = st.misses or 0
+        st.recent = st.recent or {}
+        st.started = tick()
+        local statsec = pset.new_sector("Stats", "Right")
+        statsec._desc = "Live parry statistics"
+        local stEl = statsec.element("Label", "Stats", {}, function() end)
+        stEl.h = 196
+        local dh = 196 - 16
+        statsec.height = statsec.height + dh
+        statsec._fullHeight = (statsec._fullHeight or 27) + dh
+        local stBox = Drawing.new("Square")
+        stBox.Filled = true
+        stBox.Color = _G._bgSectCont or Color3.fromRGB(16, 16, 20)
+        stBox.ZIndex = 5
+        stBox.Rounding = 3
+        stBox.Visible = false
+        local stLines, stBars = {}, {}
+        for i = 1, 10 do
+            local t = Drawing.new("Text")
+            t.Size = 12
+            t.Font = 11
+            t.Color = Color3.fromRGB(232, 232, 238)
+            t.ZIndex = 7
+            t.Outline = true
+            t.Visible = false
+            stLines[i] = t
+            stEl.parts[#stEl.parts + 1] = t
+        end
+        for i = 1, 30 do
+            local b = Drawing.new("Square")
+            b.Filled = true
+            b.Color = Color3.fromRGB(60, 220, 90)
+            b.ZIndex = 7
+            b.Visible = false
+            stBars[i] = b
+            stEl.parts[#stEl.parts + 1] = b
+        end
+        stEl.parts[#stEl.parts + 1] = stBox
+        stEl.lab.Visible = false
+        local stCache, stLast, stSig = {}, {}, ""
+        stEl.draw = function()
+            local taps = st.taps or 0
+            local parries = st.parries or 0
+            local misses = st.misses or 0
+            local total = parries + misses
+            local recent = st.recent
+            local r30, ok30, rtSum, rtCnt, rtBest = 0, 0, 0, 0, 0
+            local whyP, whyC, whyL, whyM = 0, 0, 0, 0
+            for i = 1, #recent do
+                local e = recent[i]
+                if e and (e.k == "P" or e.k == "M") then
+                    r30 = r30 + 1
+                    if e.k == "P" then ok30 = ok30 + 1 end
+                    local rt = tonumber(e.rt) or 0
+                    if rt > 0 then
+                        rtSum = rtSum + rt
+                        rtCnt = rtCnt + 1
+                        if rtBest == 0 or rt < rtBest then rtBest = rt end
+                    end
+                    local why = e.why or ""
+                    if why == "panic" then whyP = whyP + 1
+                    elseif why == "close" then whyC = whyC + 1
+                    elseif why == "lead" then whyL = whyL + 1
+                    elseif why == "miss" then whyM = whyM + 1 end
+                end
+            end
+            local secs = math.floor(tick() - (st.started or tick()))
+            local last = recent[#recent]
+            local allRate = total > 0 and math.floor(parries / total * 100 + 0.5) or 0
+            local lastRate = r30 > 0 and math.floor(ok30 / r30 * 100 + 0.5) or 0
+            local sig = taps .. ":" .. parries .. ":" .. misses .. ":" .. secs .. ":" .. r30 .. ":" .. ok30 .. ":" .. rtCnt .. ":" .. (last and last.k or "")
+            if sig ~= stSig then
+                stSig = sig
+                stCache[1] = "Taps: " .. taps
+                stCache[2] = "Parries: " .. parries
+                stCache[3] = "Misses: " .. misses
+                stCache[4] = "Total: " .. total
+                stCache[5] = "Success: " .. allRate .. "%"
+                stCache[6] = "Last 30: " .. lastRate .. "% (" .. ok30 .. "/" .. r30 .. ")"
+                stCache[7] = "Avg RT: " .. string.format("%.2f", rtCnt > 0 and rtSum / rtCnt or 0) .. "s"
+                stCache[8] = "Best RT: " .. string.format("%.2f", rtBest) .. "s"
+                stCache[9] = "Reasons: P" .. whyP .. " C" .. whyC .. " L" .. whyL .. " M" .. whyM
+                if last then
+                    stCache[10] = "Last: " .. (last.k or "?") .. " " .. string.format("%.2f", tonumber(last.rt) or 0) .. "s " .. (last.why or "")
+                else
+                    stCache[10] = "Last: none"
+                end
+            end
+            stBox.Color = statsec.cont and statsec.cont.Color or (_G._bgSectCont or Color3.fromRGB(16, 16, 20))
+            stBox.Position = Vector2.new(stEl.x + 9, stEl.y + 2)
+            stBox.Size = Vector2.new(stEl.w - 18, stEl.h - 6)
+            stBox.Visible = stEl.show
+            for i = 1, 10 do
+                local t = stLines[i]
+                t.Size = math.max(6, math.floor(12 * (_G.__uiScale or 1) + 0.5))
+                if stLast[i] ~= stCache[i] then
+                    t.Text = stCache[i]
+                    stLast[i] = stCache[i]
+                end
+                t.Position = Vector2.new(stEl.x + 15, stEl.y + 6 + (i - 1) * 15)
+                t.Visible = stEl.show
+            end
+            local baseX, baseY = stEl.x + 15, stEl.y + 166
+            for i = 1, 30 do
+                local b = stBars[i]
+                local e = recent[#recent - 30 + i]
+                if e and (e.k == "P" or e.k == "M") and stEl.show then
+                    local rt = tonumber(e.rt) or 0
+                    local bh = e.k == "P" and math.max(3, math.min(22, math.floor(rt * 40))) or 4
+                    b.Color = e.k == "P" and Color3.fromRGB(60, 220, 90) or Color3.fromRGB(220, 60, 60)
+                    b.Position = Vector2.new(baseX + (i - 1) * 6, baseY + 22 - bh)
+                    b.Size = Vector2.new(5, bh)
+                    b.Visible = true
+                else
+                    b.Visible = false
+                end
+            end
+        end
+        local mgen = _G.__remyMenuGen
+        task.spawn(function()
+            while _G.__remyMenuGen == mgen do
+                if stEl.show and stEl.rect then stEl.draw() end
+                task.wait(0.25)
+            end
+        end)
+        local oldCleanup = _G.__apCleanup
+        _G.__apCleanup = function()
+            if oldCleanup then pcall(oldCleanup) end
+            pcall(stBox.Remove, stBox)
+            for i = 1, #stLines do pcall(stLines[i].Remove, stLines[i]) end
+            for i = 1, #stBars do pcall(stBars[i].Remove, stBars[i]) end
+        end
+        statsec.element("Button", "Reset Stats", {}, function()
+            local st = _G.__apStats
+            if st then
+                st.taps = 0
+                st.parries = 0
+                st.misses = 0
+                st.hits = 0
+                st.recent = {}
+            end
+            stCache, stLast, stSig = {}, {}, ""
+            pcall(stEl.draw, stEl)
+        end)
+    end
+
     local apsec = main.new_section("Auto Play")
     local aps = apsec.new_sector("Automation")
     aps._desc = "Autoplay and auto walk"
@@ -7924,6 +8806,7 @@ do
         local c0 = lala.bvColor or { r = 0, g = 255, b = 0 }
         local cl = bvEl:add_color({ Color = Color3.fromRGB(tonumber(c0.r) or 0, tonumber(c0.g) or 255, tonumber(c0.b) or 0) })
         cl.defC = Color3.fromRGB(0, 255, 0)
+        cl.rowOpen = true
         cl.cb = function(v)
             lala.bvColor = { r = math.floor(v.Color.R * 255 + 0.5), g = math.floor(v.Color.G * 255 + 0.5), b = math.floor(v.Color.B * 255 + 0.5) }
             saveUI()
@@ -7940,6 +8823,7 @@ do
         local c1 = lala.bvEnd or { r = 255, g = 0, b = 0 }
         local cl = bvEndEl:add_color({ Color = Color3.fromRGB(tonumber(c1.r) or 255, tonumber(c1.g) or 0, tonumber(c1.b) or 0) })
         cl.defC = Color3.fromRGB(255, 0, 0)
+        cl.rowOpen = true
         cl.cb = function(v)
             lala.bvEnd = { r = math.floor(v.Color.R * 255 + 0.5), g = math.floor(v.Color.G * 255 + 0.5), b = math.floor(v.Color.B * 255 + 0.5) }
             saveUI()
@@ -8000,6 +8884,7 @@ do
         local c0 = lala.apColor or { r = 0, g = 255, b = 120 }
         local cl = apLookEl:add_color({ Color = Color3.fromRGB(tonumber(c0.r) or 0, tonumber(c0.g) or 255, tonumber(c0.b) or 120) })
         cl.defC = Color3.fromRGB(0, 255, 120)
+        cl.rowOpen = true
         cl.cb = function(v)
             lala.apColor = { r = math.floor(v.Color.R * 255 + 0.5), g = math.floor(v.Color.G * 255 + 0.5), b = math.floor(v.Color.B * 255 + 0.5) }
             saveUI()
@@ -8021,6 +8906,7 @@ do
         local c1 = lala.pdColor or { r = 255, g = 0, b = 0 }
         local cl = pdLookEl:add_color({ Color = Color3.fromRGB(tonumber(c1.r) or 255, tonumber(c1.g) or 0, tonumber(c1.b) or 0) })
         cl.defC = Color3.fromRGB(255, 0, 0)
+        cl.rowOpen = true
         cl.cb = function(v)
             lala.pdColor = { r = math.floor(v.Color.R * 255 + 0.5), g = math.floor(v.Color.G * 255 + 0.5), b = math.floor(v.Color.B * 255 + 0.5) }
             saveUI()
@@ -8040,25 +8926,275 @@ do
     local cfg = menu.new_tab("gear", "CONFIG").new_section("Settings")
     local gen = cfg.new_sector("General")
 
-    local profSlot = "1"
-    gen.element("Dropdown", "Config Slot", { options = _G.remybbProfiles and _G.remybbProfiles.slots or { "1" } }, function(v)
-        profSlot = v.Dropdown
+    local namedCfgCache
+    local function namedCfgFiles()
+        if namedCfgCache and not _G.__remyNamedCfgDirty then return namedCfgCache end
+        local out = {}
+        local ok, files = pcall(listfiles, "")
+        if ok and files then
+            for _, f in ipairs(files) do
+                local name = tostring(f):gsub("^.+[\\/]", ""):match("^remybb_profile_(.+)%.json$")
+                if name and name ~= "" then out[#out + 1] = name end
+            end
+        end
+        table.sort(out)
+        namedCfgCache = out
+        _G.__remyNamedCfgDirty = false
+        return out
+    end
+
+    local function cfgFile(n)
+        return "remybb_profile_" .. tostring(n) .. ".json"
+    end
+
+    local KEY_FIELDS = {
+        "keyP", "keyV", "keyC", "keyX", "keyL", "keyB", "keyR", "keyN",
+        "keyEsp", "keyEspMaster", "keyG", "keyT", "keySmart", "keyY", "keyPanic",
+    }
+
+    local function snapshotLala()
+        local out = {}
+        for k, v in pairs(lala) do
+            if type(k) == "string" and k:sub(1, 1) ~= "_" then
+                local tv = type(v)
+                if tv == "number" or tv == "string" or tv == "boolean" then
+                    out[k] = v
+                elseif tv == "table" then
+                    local flat, ok = {}, true
+                    for k2, v2 in pairs(v) do
+                        local tv2 = type(v2)
+                        if tv2 == "number" or tv2 == "string" or tv2 == "boolean" then
+                            flat[k2] = v2
+                        else
+                            ok = false
+                            break
+                        end
+                    end
+                    if ok then out[k] = flat end
+                end
+            end
+        end
+        for _, k in ipairs(KEY_FIELDS) do
+            if type(lala[k]) ~= "number" then out[k] = 0 end
+        end
+        out.uiAccent = _G._genUIAccent
+        out.uiBg = _G._genUIBg
+        out.uiScale = _G.__uiScale
+        out.uiScroll = _G.__remyUiScrollSave
+        out.uiCollapse = _G.__remyUiCollapseSave
+        return out
+    end
+
+    local function applySnapshot(data)
+        if type(data) ~= "table" then return end
+        for k, v in pairs(data) do
+            if type(k) == "string" and k:sub(1, 1) ~= "_" then
+                if v == 0 and k:match("^key[A-Z]") then
+                    lala[k] = nil
+                elseif type(v) == "table" then
+                    if type(lala[k]) == "table" then
+                        local old = lala[k]
+                        for k2 in pairs(old) do old[k2] = nil end
+                        for k2, v2 in pairs(v) do old[k2] = v2 end
+                    else
+                        local c = {}
+                        for k2, v2 in pairs(v) do c[k2] = v2 end
+                        lala[k] = c
+                    end
+                else
+                    lala[k] = v
+                end
+            end
+        end
+        if type(data.uiBg) == "string" and #data.uiBg == 6 then
+            _G._genUIBg = data.uiBg:upper()
+            local c = hexToColor("#" .. _G._genUIBg)
+            if _G._uiBgCl then _G._uiBgCl.value.Color = c; _G._uiBgCl.swatch.Color = c end
+            _G.swapBgColor(c)
+        end
+        if type(data.uiAccent) == "string" and #data.uiAccent == 6 then
+            _G._genUIAccent = data.uiAccent:upper()
+            local c = hexToColor("#" .. _G._genUIAccent)
+            if _G._uiThemeCl then _G._uiThemeCl.value.Color = c; _G._uiThemeCl.swatch.Color = c end
+            if library.set_accent then library:set_accent(c) end
+            _G.swapBgForAccent(c)
+        end
+        if type(data.uiScale) == "number" and _G.__applyUiScale then _G.__applyUiScale(data.uiScale) end
+        if type(data.uiScroll) == "table" and _G.__applyUiScrollSave then _G.__applyUiScrollSave(data.uiScroll) end
+        if type(data.uiCollapse) == "table" and _G.__applyUiCollapseSave then _G.__applyUiCollapseSave(data.uiCollapse) end
+    end
+
+    local cfgNames = namedCfgFiles()
+    local cfgSel = cfgNames[1] or "none"
+    local cfgFilter = ""
+    local applyCfgFilter
+    local loadCfg
+    local cfgNameEl = gen.element("TextBox", "Config Name", { default = { Text = "" } }, function() end)
+    local cfgSearchEl = gen.element("TextBox", "Search Configs", { default = { Text = "" } }, function(v)
+        cfgFilter = tostring(v.Text or ""):gsub("^%s+", ""):gsub("%s+$", ""):lower()
+        if applyCfgFilter then applyCfgFilter(cfgSel) end
     end)
-    gen.element("Button", "Save To Slot", {}, function()
-        if _G.remybbProfiles and _G.remybbProfiles.save(profSlot) then
-            pcall(_G.remybbSaveConfig)
-            notify("gennegen", "saved to slot " .. profSlot, 2)
+    local cfgDrop = gen.element("Dropdown", "Saved Configs", {
+        options = #cfgNames > 0 and cfgNames or { "none" },
+        default = { Dropdown = cfgSel },
+    }, function(v)
+        cfgSel = v.Dropdown
+        if cfgSel ~= "none" then
+            cfgNameEl.value.Text = cfgSel
+            loadCfg(cfgSel)
         end
     end)
-    gen.element("Button", "Load Slot", {}, function()
-        if _G.remybbProfiles and _G.remybbProfiles.load(profSlot) then
-            task.delay(0.3, function()
-                if library.fire_all then library:fire_all() end
-                notify("gennegen", "loaded slot " .. profSlot, 2)
-            end)
-        else
-            notify("gennegen", "slot " .. profSlot .. " is empty", 2)
+
+    applyCfgFilter = function(prefer)
+        local names = {}
+        for _, n in ipairs(namedCfgFiles()) do
+            if cfgFilter == "" or tostring(n):lower():find(cfgFilter, 1, true) then
+                names[#names + 1] = n
+            end
         end
+        cfgDrop.opts = #names > 0 and names or { "none" }
+        cfgDrop.popH = math.min(#cfgDrop.opts, 20) * 18
+        local want = prefer or cfgSel
+        local found = false
+        for _, n in ipairs(cfgDrop.opts) do
+            if n == want then found = true break end
+        end
+        if not found then want = cfgDrop.opts[1] end
+        cfgSel = want
+        cfgDrop.value.Dropdown = want
+        cfgDrop._btnLt = nil
+    end
+    applyCfgFilter(cfgSel)
+
+    local function typedCfgName()
+        local n = tostring(cfgNameEl.value.Text or "")
+        n = n:gsub("^%s+", ""):gsub("%s+$", "")
+        n = n:gsub("[\\/:*?\"<>|]", "_")
+        if n == "" then n = cfgSel end
+        if n == "none" then return nil end
+        return n
+    end
+
+    local function cfgExists(n)
+        for _, f in ipairs(namedCfgFiles()) do
+            if f == n then return true end
+        end
+        return false
+    end
+
+    local function saveCfgAs(n, verb)
+        if not n then
+            notify("gennegen", "enter a config name first", 2)
+            return
+        end
+        local ok = false
+        pcall(function()
+            writefile(cfgFile(n), hs:JSONEncode(snapshotLala()))
+            ok = true
+        end)
+        if not ok then
+            notify("gennegen", "failed to save config " .. n, 2)
+            return
+        end
+        _G.__remyNamedCfgDirty = true
+        cfgNameEl.value.Text = n
+        applyCfgFilter(n)
+        notify("gennegen", verb .. " config " .. n, 2)
+    end
+
+    loadCfg = function(n)
+        if not n or n == "none" then return false end
+        local applied = false
+        pcall(function()
+            local f = cfgFile(n)
+            if not isfile(f) then return end
+            local okd, data = pcall(hs.JSONDecode, hs, readfile(f))
+            if okd and type(data) == "table" then
+                applySnapshot(data)
+                applied = true
+            end
+        end)
+        if not applied then
+            notify("gennegen", "failed to load config " .. n, 2)
+            return false
+        end
+        cfgNameEl.value.Text = n
+        if _G.remybbSaveConfig then pcall(_G.remybbSaveConfig) end
+        notify("gennegen", "loaded config " .. n, 2)
+        return true
+    end
+
+    gen.element("Button", "Save Config", {}, function()
+        local n = typedCfgName()
+        if n and cfgExists(n) then
+            notify("gennegen", n .. " already exists - use Overwrite", 2)
+            return
+        end
+        saveCfgAs(n, "saved")
+    end)
+
+    gen.element("Button", "Overwrite Config", {}, function()
+        local n = cfgSel
+        if n == "none" then n = typedCfgName() end
+        saveCfgAs(n, "overwrote")
+    end)
+
+    gen.element("Button", "Delete Config", {}, function()
+        local n = cfgSel
+        if not n or n == "none" then
+            notify("gennegen", "no config selected", 2)
+            return
+        end
+        pcall(function() delfile(cfgFile(n)) end)
+        _G.__remyNamedCfgDirty = true
+        applyCfgFilter()
+        notify("gennegen", "deleted config " .. n, 2)
+    end)
+    gen.element("Button", "Rename Config", {}, function()
+        local old = cfgSel
+        if not old or old == "none" then
+            notify("gennegen", "no config selected", 2)
+            return
+        end
+        local newName = typedCfgName()
+        if not newName or newName == old then
+            notify("gennegen", "type a new config name first", 2)
+            return
+        end
+        if cfgExists(newName) then
+            notify("gennegen", newName .. " already exists", 2)
+            return
+        end
+        local data
+        local okr = pcall(function() data = readfile(cfgFile(old)) end)
+        if not okr or not data then
+            notify("gennegen", "failed to read config " .. old, 2)
+            return
+        end
+        local okw = pcall(function()
+            writefile(cfgFile(newName), data)
+            delfile(cfgFile(old))
+        end)
+        if not okw then
+            notify("gennegen", "failed to rename config", 2)
+            return
+        end
+        _G.__remyNamedCfgDirty = true
+        cfgFilter = ""
+        cfgSearchEl.value.Text = ""
+        cfgNameEl.value.Text = newName
+        applyCfgFilter(newName)
+        notify("gennegen", "renamed config to " .. newName, 2)
+    end)
+
+    gen.element("Button", "Load Config", {}, function()
+        local n = cfgSel
+        if not n or n == "none" then n = typedCfgName() end
+        if not n or n == "none" then
+            notify("gennegen", "type a name or pick a config first", 2)
+            return
+        end
+        loadCfg(n)
     end)
 
     local uiKeyEl = gen.element("Toggle", "UI Toggle Key", { default = { Toggle = false } }, function() end)
@@ -8081,7 +9217,8 @@ do
     end
 
     local uiset = cfg.new_sector("UI Settings", "Right")
-    local accEl = uiset.element("Toggle", "Accent Color", { default = { Toggle = false } }, function() end)
+    local bgEl = uiset.element("Toggle", "Background Color", { default = { Toggle = false } }, function() end)
+    local accEl = uiset.element("Toggle", "Theme Color", { default = { Toggle = false } }, function() end)
     do
         if library.set_alpha then library:set_alpha((tonumber(_G._genUITrans) or 100) / 100) end
         local trEl = uiset.element("Slider", "UI Transparency", {
@@ -8093,26 +9230,50 @@ do
         end)
     end
     do
-        local hcEl = uiset.element("Toggle", "Hide User Card", { default = { Toggle = boo(_G._genHideCard, false) } }, function(v)
-            _G._genHideCard = v.Toggle
+        local scEl = uiset.element("Slider", "UI Scale", {
+            default = { min = 75, max = 125, default = math.floor((tonumber(_G.__uiScale) or 1) * 100 + 0.5) },
+        }, function(v)
+            _G.__uiScale = v.Slider / 100
+            if _G.__applyUiScale then _G.__applyUiScale(_G.__uiScale) end
             saveUI()
         end)
-        local bnEl = uiset.element("Toggle", "Blur Username", { default = { Toggle = boo(_G._genBlurName, false) } }, function(v)
-            _G._genBlurName = v.Toggle
-            if _G.applyAvName then _G.applyAvName() end
-            saveUI()
-        end)
+        scEl.releaseOnly = true
+        scEl.disp = function(v) return math.floor(v + 0.5) .. "%" end
     end
     T(uiset, "Background Particles", "uiParticles")
     T(uiset, "Cursor Ball Effect", "uiBall")
     T(uiset, "Keybinds List", "keybindsHud")
     do
+        local rdb = bgEl.draw
+        bgEl.draw = function()
+            rdb()
+            bgEl.track.Visible = false
+            bgEl.knob.Visible = false
+        end
         local rd = accEl.draw
         accEl.draw = function()
             rd()
             accEl.track.Visible = false
             accEl.knob.Visible = false
         end
+    end
+    do
+        local defC = Color3.fromRGB(11, 11, 14)
+        if type(_G._genUIBg) == "string" and #_G._genUIBg == 6 then
+            local h = _G._genUIBg
+            defC = Color3.fromRGB(tonumber(h:sub(1, 2), 16) or 11, tonumber(h:sub(3, 4), 16) or 11, tonumber(h:sub(5, 6), 16) or 14)
+        end
+        local cl = bgEl:add_color({ Color = defC })
+        cl.isBg = true
+        cl.defC = Color3.fromRGB(11, 11, 14)
+        cl.cb = function(v)
+            _G.swapBgColor(v.Color)
+            _G._genUIBg = string.format("%02X%02X%02X", math.floor(v.Color.R * 255 + 0.5), math.floor(v.Color.G * 255 + 0.5), math.floor(v.Color.B * 255 + 0.5))
+            lala.uiBg = _G._genUIBg
+            saveUI()
+        end
+        _G._uiBgCl = cl
+        _G.swapBgColor(defC)
     end
     do
         local defC = Color3.fromRGB(255, 255, 255)
@@ -8122,11 +9283,13 @@ do
         end
         local cl = accEl:add_color({ Color = defC })
         cl.isAccent = true
+        _G._uiThemeCl = cl
         cl.defC = Color3.fromRGB(255, 255, 255)
         cl.cb = function(v)
             if library.set_accent then library:set_accent(v.Color) end
             _G.swapBgForAccent(v.Color)
             _G._genUIAccent = string.format("%02X%02X%02X", math.floor(v.Color.R * 255 + 0.5), math.floor(v.Color.G * 255 + 0.5), math.floor(v.Color.B * 255 + 0.5))
+            lala.uiAccent = _G._genUIAccent
             saveUI()
         end
         if _G._genUIAccent and library.set_accent then library:set_accent(defC) end
@@ -8134,6 +9297,15 @@ do
     end
 
     uiset.element("Button", "Reset All Settings", {}, function()
+        local theme = {
+            accent = _G._genUIAccent,
+            bg = _G._genUIBg,
+            trans = _G._genUITrans,
+            uiKey = _G._genUIKey,
+            particles = lala.uiParticles,
+            ball = lala.uiBall,
+            keysHud = lala.keybindsHud,
+        }
         local d = _G.remybbDefaults
         if d then
             for k, v in pairs(d) do
@@ -8148,27 +9320,56 @@ do
         end
         if library.reset_ui then library:reset_ui() end
         if library.set_all_toggles then library:set_all_toggles(false) end
+        for k in pairs(lala) do
+            if type(k) == "string" and k:match("^key[A-Z]") then
+                lala[k] = nil
+            end
+        end
         lala.customLeadMode = false
         lala.pingComp = true
         lala.customFacingMinMode = false
         lala.viewEnabled = false
+        _G._genUIAccent = theme.accent
+        _G._genUIBg = theme.bg
+        _G._genUITrans = theme.trans
+        _G._genUIKey = theme.uiKey
+        lala.uiParticles = theme.particles
+        lala.uiBall = theme.ball
+        lala.keybindsHud = theme.keysHud
+        _G.__genUiPrefs.particles = lala.uiParticles
+        _G.__genUiPrefs.ball = lala.uiBall
+        local h = theme.accent
+        local ac = Color3.fromRGB(
+            h and tonumber(h:sub(1, 2), 16) or 255,
+            h and tonumber(h:sub(3, 4), 16) or 255,
+            h and tonumber(h:sub(5, 6), 16) or 255
+        )
+        local bg = theme.bg
+        local bc = bg and Color3.fromRGB(tonumber(bg:sub(1, 2), 16) or 11, tonumber(bg:sub(3, 4), 16) or 11, tonumber(bg:sub(5, 6), 16) or 14) or Color3.fromRGB(11, 11, 14)
+        if _G._uiThemeCl then _G._uiThemeCl.value.Color = ac; _G._uiThemeCl.swatch.Color = ac end
+        if _G._uiBgCl then _G._uiBgCl.value.Color = bc; _G._uiBgCl.swatch.Color = bc end
+        if library.set_accent then library:set_accent(ac) end
+        _G.swapBgColor(bc)
+        _G.swapBgForAccent(ac)
+        if library.set_alpha then library:set_alpha((tonumber(theme.trans) or 100) / 100) end
+        if uiKeyEl.kb then uiKeyEl.kb.value.Key = theme.uiKey or 45 end
         if _G.remybbSaveConfig then pcall(_G.remybbSaveConfig) end
-        _G._genUIAccent = nil
-        _G._genUIKey = nil
-        uiKeyEl.kb.value.Key = 45
         saveUI()
-        notify("gennegen", "all settings reset to defaults", 2)
     end)
 
     uiset.element("Button", "Unload Script", {}, function()
-        notify("gennegen", "unloading script", 1)
-        task.delay(0.4, function()
+        task.spawn(function()
+            task.wait(0.4)
             _G.__apGen = (_G.__apGen or 0) + 1
+            _G.__remyMenuGen = (_G.__remyMenuGen or 0) + 1
+            if _G._genToken and _G._genToken.unload then
+                pcall(_G._genToken.unload)
+            end
             if _G.__apCleanup then pcall(_G.__apCleanup) end
             pcall(function()
                 for _, k in ipairs({ 87, 65, 83, 68, 32 }) do keyrelease(k) end
             end)
-            if _G._genToken and _G._genToken.unload then pcall(_G._genToken.unload) end
+            pcall(setrobloxinput, "BlockUserInput", false)
             _G.GenLib = nil
             _G.remybbMenu = nil
             _G.autoParry = nil
@@ -8243,6 +9444,14 @@ end)
 end
 
 do
+    if _G.__remyUiScrollPending then
+        _G.__applyUiScrollSave(_G.__remyUiScrollPending)
+        _G.__remyUiScrollPending = nil
+    end
+    if _G.__remyUiCollapsePending then
+        _G.__applyUiCollapseSave(_G.__remyUiCollapsePending)
+        _G.__remyUiCollapsePending = nil
+    end
     _G.applyMenuFade()
     local light = _G._bgIsLight
     local red = _G._bgIsRed
